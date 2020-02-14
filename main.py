@@ -10,11 +10,6 @@ from torch.backends import cudnn
 from libs import *
 from libs.config import *
 
-if os.environ.get('COLAB_TPU_ADDR', False):
-    install_tpu()
-    import torch_xla.core.xla_model as xm
-    import torch_xla.distributed.xla_multiprocessing as xmp
-
 cudnn.enabled = True
 cudnn.benchmark = True
 
@@ -92,7 +87,7 @@ print(f'Parameters: {parameter_count(netD)}')
 
 # First iteration takes 5~10 minutes
 
-torch.autograd.set_detect_anomaly(False)  # Advanced debugging at the cost of more errors
+torch.autograd.set_detect_anomaly(True)  # Advanced debugging at the cost of more errors
 print("Starting Training LÖÖPS...")
 
 try:
@@ -110,19 +105,12 @@ fake_tensor = torch.full((1,), -1, device=device)
 
 def train(*args, **kwargs):
     ditr = diters
-    if not USE_TPU:
-        global device
-        global optimizerG
-        global optimizerD
-        gen = netG
-        dis = netD
-        fnoise = fixed_noise
-    else:
-        device = xm.xla_device()
-        gen = netG.to(device)
-        dis = netD.to(device)
-        fnoise = fixed_noise.to(device)
-        gen.noise = gen.noise.to(device)
+    global device
+    global optimizerG
+    global optimizerD
+    gen = netG
+    dis = netD
+    fnoise = fixed_noise
     epoch = -1
     while True:
         dhist = []
@@ -133,12 +121,8 @@ def train(*args, **kwargs):
         miniter = minibatch_function(epoch)
         subepochs *= minibatch_function(epoch,1)
         subepochs *= subepochs
-        if USE_TPU:
-            print_every_nth_batch = max(1, main_n // max(8 * batch, 64))
-            image_intervall = max(1, 2 * main_n // batch)
-        else:
-            print_every_nth_batch = max(1, main_n // max(batch, 64))
-            image_intervall = max(1, 16 * main_n // batch)
+        print_every_nth_batch = max(1, main_n // max(batch, 64))
+        image_intervall = max(1, 16 * main_n // batch)
         try:
             os.mkdir(f'{OUTPUT_FOLDER}/{epoch + 1}')
         except FileExistsError:
@@ -175,10 +159,7 @@ def train(*args, **kwargs):
                 (d_error + penalty(d_true, aug_data, dis, device)).backward()
 
                 if i % miniter == 0:
-                    if USE_TPU:
-                        xm.optimizer_step(optimizerD)
-                    else:
-                        optimizerD.step()
+                    optimizerD.step()
                     if (i // miniter) % ditr == 0:
                         dis.requires_grad_(False)
                         for _ in range(minibatches):
@@ -190,21 +171,16 @@ def train(*args, **kwargs):
                               g_error = g_error.mean()
                             g_error.backward()
 
-                        if USE_TPU:
-                            xm.optimizer_step(optimizerG)
-                        else:
-                            optimizerG.step()
+                        optimizerG.step()
                         dis.requires_grad_(True)
 
-                    if i % print_every_nth_batch == 0 and (not USE_TPU or xm.get_ordinal() == 0):
+                    if i % print_every_nth_batch == 0:
                         i = i
                         cdiff_i = i / (time.time() - start_time)
                         try:
                             eta = str(timedelta(seconds=int((batches - i) / cdiff_i)))
                         except:
                             eta = "Unknown"
-                        if USE_TPU:
-                            cdiff_i *= 8
                         try:
                             drror = d_error.item() / 2
                             grror = g_error.item()
@@ -215,19 +191,18 @@ def train(*args, **kwargs):
                                 + f'D:{drror:9.4f} - G:{grror:9.4f}| ETA: {eta}', end='', flush=True)
                         dhist.append(drror)
                         ghist.append(grror)
-                    if not USE_TPU:
-                        if i % image_intervall == 0:
-                            gen.eval()
-                            if USE_GPU:
-                                torch.cuda.empty_cache()
-                            with torch.no_grad():
-                                fake = gen(fnoise).detach().cpu()
-                            if USE_GPU:
-                                torch.cuda.empty_cache()
-                            gen.train()
-                            plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-{i:0{batch_len}d}.png',
-                                       arr=np.transpose(vutils.make_grid(fake, padding=8, normalize=True).numpy(),
-                                                        (1, 2, 0)))
+                    if i % image_intervall == 0:
+                        gen.eval()
+                        if USE_GPU:
+                            torch.cuda.empty_cache()
+                        with torch.no_grad():
+                            fake = gen(fnoise).detach().cpu()
+                        if USE_GPU:
+                            torch.cuda.empty_cache()
+                        gen.train()
+                        plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-{i:0{batch_len}d}.png',
+                                   arr=np.transpose(vutils.make_grid(fake, padding=8, normalize=True).numpy(),
+                                                    (1, 2, 0)))
             print('')
             if USE_GPU:
                 torch.cuda.empty_cache()
@@ -242,15 +217,4 @@ def train(*args, **kwargs):
         torch.save(netD.state_dict(), 'netD.torch')
 
 
-if USE_TPU:
-    loop = True
-    while loop:
-        try:
-            xmp.spawn(train, nprocs=8, start_method='fork')
-        except KeyboardInterrupt:
-            loop = False
-        except BaseException as exc:
-            print('')
-            show_images()
-else:
-    train()
+train()

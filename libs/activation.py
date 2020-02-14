@@ -17,27 +17,23 @@ class RootTanh(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         x, = ctx.saved_tensors
-        x_2 = x.mul(2)
-        x_square_1 = x.pow(2)
-        x_square_1.add_(1)
-        lower_cosh = x_2.cosh()
-        lower_cosh.add_(1)
-        lower = x_square_1.pow(2/ROOTTANH_GROWTH)
-        lower.mul_(lower_cosh)
-
-        x_square_1.mul_(x.cosh().pow(2))
-        x_square_1.mul_(4)
-        x_square_1.div_(lower_cosh)
-        x_2.mul_(x_2.sinh())
-        x_2.div_(ROOTTANH_GROWTH)
-        x_square_1.add_(x_2)
-        x_square_1.div_(lower)
-
-        x_square_1.mul_(grad_output)
-
-        return x_square_1.float()
+        x_2 = x.pow(2)
+        x_2.add_(1)
+        sech_2_x = x.cosh()
+        sech_2_x.pow_(2)
+        sech_2_x.reciprocal_()
+        sech_2_x.mul_(x_2)
+        sech_2_x.mul_(2)
+        tanh_x = x.tanh()
+        tanh_x.mul_(x)
+        sech_2_x.add_(tanh_x)
+        x_2.pow_((ROOTTANH_GROWTH-1)/ROOTTANH_GROWTH)
+        x_2.mul_(2)
+        sech_2_x.div_(x_2)
+        sech_2_x.mul_(grad_output)
+        return sech_2_x.float()
         
-
+        
 class Swish(nn.Module):
     def __init__(self):
         super(Swish, self).__init__()

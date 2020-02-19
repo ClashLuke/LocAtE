@@ -4,5 +4,4 @@ gan_outputs/*
 error/*
 img_align_celeba.zip
 *.torch
-
-
+**__pycache__**

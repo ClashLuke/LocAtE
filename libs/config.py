@@ -1,8 +1,7 @@
 import math
-import os
 
-import torch
 import numpy as np
+import torch
 
 # Set random seed for reproducibility
 manualSeed = 999
@@ -49,6 +48,7 @@ d_stride = 2
 layers = int(math.log(image_size, 2))
 
 factorize = False
+separable = True
 ROOTTANH_GROWTH = 4
 ngf = factor ** int(math.log(image_size, g_stride)) * 16
 ndf = factor ** int(math.log(image_size, d_stride)) * 4

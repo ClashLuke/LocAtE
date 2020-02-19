@@ -1,8 +1,9 @@
-import operator
+import collections
 from functools import reduce
+import operator
+
 
 import matplotlib.pyplot as plt
-import numpy as np
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
@@ -10,6 +11,13 @@ import torchvision.utils as vutils
 from .config import *
 from .nadam import Nadam
 
+
+def flatten(input_list):
+    while input_list:
+        while input_list and isinstance(input_list[0], collections.Iterable):
+            input_list[0:1] = input_list[0]
+        if input_list:
+            yield input_list.pop(0)
 
 def kernel_tuple(k, s):
     return tuple([max(k, s)] * 2)
@@ -21,17 +29,17 @@ def get_feature_list(strides, invert, features):
     return feature_list
 
 
-def conv_pad_tuple(k, _):
-    return tuple([k // 2] * 2)
+def conv_pad_tuple(k, _, dim=2):
+    return tuple([k // 2] * dim)
 
 
-def transpose_pad_tuple(k, s):
-    return tuple([max(conv_pad_tuple(k, s)[0] - s // 2, 0)] * 2)
+def transpose_pad_tuple(k, s, dim=2):
+    return tuple([max(conv_pad_tuple(k, s)[0] - s // 2, 0)] * dim)
 
 
 def view_expand(out_size, tensor):
     if tensor is not None:
-        return tensor.view(tensor.size(0), -1, 1, 1).expand(out_size)
+        return tensor.view(tensor.size(0), -1, *[1] * (len(tensor.size()) - 2)).expand(out_size)
     return None
 
 
@@ -53,6 +61,7 @@ def plot_hist(in_list, filename):
     plt.clf()
     plt.plot(in_list)
     plt.savefig(filename)
+
 
 n = 0
 
@@ -90,7 +99,7 @@ def get_dataloader(dataset, batch_size, workers=4):
 
 
 def init(m: object):
-    if "norm" not in m.__class__.__name__.lower():       
+    if "norm" not in m.__class__.__name__.lower():
         try:
             torch.nn.init.orthogonal_(m.weight.data)
         except AttributeError:
@@ -119,11 +128,8 @@ prod_sum = lambda x: sum([np.prod(p.size()) for p in x])
 parameter_count = lambda net: prod_sum(model_parameters(net))
 
 
-def get_model(model_class, lr, device):
-    model = model_class().to(device)
-    print(0)
+def get_model(model, lr, device):
+    model = model.to(device)
     model.apply(init)
-    print(0, 1)
     opt = Nadam(model.parameters(), lr=lr, betas=(beta1, beta2))
-    print(0, 2)
     return model, opt

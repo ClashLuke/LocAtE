@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import os
 # In[1]:
 import time
 from datetime import timedelta
@@ -38,8 +39,8 @@ plot_images(augmented_batch)
 ### INITIALISE GLOBALS ###
 ### ################## ###
 
-netG, optimizerG = get_model(Generator, glr, device)
-netD, optimizerD = get_model(Discriminator, dlr, device)
+netG, optimizerG = get_model(Generator(), glr, device)
+netD, optimizerD = get_model(Discriminator(), dlr, device)
 
 g_in = netG.g_in
 
@@ -206,6 +207,17 @@ def train(*args, **kwargs):
             print('')
             if USE_GPU:
                 torch.cuda.empty_cache()
+            gen.eval()
+            if USE_GPU:
+                torch.cuda.empty_cache()
+            with torch.no_grad():
+                fake = gen(fnoise).detach().cpu()
+            if USE_GPU:
+                torch.cuda.empty_cache()
+            gen.train()
+            plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-END.png',
+                       arr=np.transpose(vutils.make_grid(fake, padding=8, normalize=True).numpy(),
+                                        (1, 2, 0)))
         div = ((mean_window ** 2 - mean_window) / 2)
         ma_dhist = [sum(dhist[i + j - 1] * j for j in range(1, mean_window + 1)) / div for i in
                     range(len(dhist) - mean_window)]

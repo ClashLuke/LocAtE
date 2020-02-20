@@ -48,7 +48,7 @@ d_stride = 2
 layers = int(math.log(image_size, 2))
 
 factorize = False
-separable = True
+separable = False
 ROOTTANH_GROWTH = 4
 ngf = factor ** int(math.log(image_size, g_stride)) * 16
 ndf = factor ** int(math.log(image_size, d_stride)) * 4

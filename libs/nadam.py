@@ -1,6 +1,6 @@
 from torch.optim import Optimizer
 
-
+# skipcq
 class Nadam(Optimizer):
     """Implements Nadam algorithm (a variant of Adam based on Nesterov momentum).
 
@@ -64,10 +64,9 @@ class Nadam(Optimizer):
                 if group['weight_decay'] != 0:
                     grad = grad.add(group['weight_decay'], p.data)
 
-                momentum_cache_t = beta1 * \
-                                   (1. - 0.5 * (0.96 ** (t * schedule_decay)))
-                momentum_cache_t_1 = beta1 * \
-                                     (1. - 0.5 * (0.96 ** ((t + 1) * schedule_decay)))
+                momentum_cache_t = beta1 * (1. - 0.5 * (0.96 ** (t * schedule_decay)))
+                momentum_cache_t_1 = beta1 * (1. - 0.5 *
+                                              (0.96 ** ((t + 1) * schedule_decay)))
                 m_schedule_new = m_schedule * momentum_cache_t
                 m_schedule_next = m_schedule * momentum_cache_t * momentum_cache_t_1
                 state['m_schedule'] = m_schedule_new
@@ -78,7 +77,12 @@ class Nadam(Optimizer):
                 exp_avg_sq_prime = exp_avg_sq / (1. - beta2 ** t)
                 denom = exp_avg_sq_prime.sqrt_().add_(eps)
 
-                p.data.addcdiv_(-group['lr'] * (1. - momentum_cache_t) / (1. - m_schedule_new), grad, denom)
-                p.data.addcdiv_(-group['lr'] * momentum_cache_t_1 / (1. - m_schedule_next), exp_avg, denom)
+                p.data.addcdiv_(
+                        -group['lr'] * (1. - momentum_cache_t) / (1. - m_schedule_new),
+                        grad, denom)
+                p.data.addcdiv_(
+                        -group['lr'] * momentum_cache_t_1 / (1. - m_schedule_next),
+                        exp_avg,
+                        denom)
 
         return loss

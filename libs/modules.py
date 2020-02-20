@@ -1,7 +1,12 @@
-from .activation import nlinear
-from .config import *
+import torch
+from torch import nn
+
+from .activation import NonLinear
+from .config import (ATTENTION_EVERY_NTH_LAYER, BOTTLENECK, DEFAULT_KERNEL_SIZE,
+                     FACTORIZE, FACTORIZED_KERNEL_SIZE, INPUT_VECTOR_Z,
+                     MIN_ATTENTION_SIZE, MIN_INCEPTION_FEATURES, SEPARABLE)
 from .spectral_norm import SpectralNorm
-from .util_modules import *
+from .util_modules import Expand, ViewBatch, ViewFeatures
 from .utils import conv_pad_tuple, prod, transpose_pad_tuple
 
 
@@ -39,26 +44,6 @@ def Scale(in_features, out_features, stride, transpose, dim=2):
         return reslayers[0]
 
 
-class ViewBatch(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.batch = 1
-
-    def forward(self, input):
-        _, _, *size = input.size()
-        return input.view(self.batch, -1, *size)
-
-
-class ViewFeatures(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.features = 1
-
-    def forward(self, input):
-        _, _, *size = input.size()
-        return input.view(-1, self.features, *size)
-
-
 class FactorizedConvModule(nn.Module):
     def __init__(self, in_features, out_features, kernel, transpose, depth, padding,
                  stride, use_bottleneck=True, dim=2):
@@ -77,15 +62,15 @@ class FactorizedConvModule(nn.Module):
         else:
             pad_tuple = conv_pad_tuple
         input_pad = pad_tuple(in_kernel, stride)[0]
-        default_pad = default_kernel_size // 2
+        default_pad = DEFAULT_KERNEL_SIZE // 2
 
         self.up = ViewFeatures()  # (batch*features, 1)
         self.down = ViewBatch()  # (batch, features)
 
         def conv(i, o, k, s, p, c):
-            if factorize:
+            if FACTORIZE:
                 layer = []
-                if separable:
+                if SEPARABLE:
                     layer.append(self.up)
                 for d in range(dim):
                     conv_kernel = [1] * dim
@@ -94,17 +79,17 @@ class FactorizedConvModule(nn.Module):
                     conv_stride[d] = s
                     conv_pad = [0] * dim
                     conv_pad[d] = p
-                    layer.append(SpectralNorm(c(1 if separable else i,
-                                                1 if separable else o,
+                    layer.append(SpectralNorm(c(1 if SEPARABLE else i,
+                                                1 if SEPARABLE else o,
                                                 conv_kernel, conv_stride, conv_pad,
                                                 bias=False)))
-                    if not separable:
+                    if not SEPARABLE:
                         i = o
-                if separable:
+                if SEPARABLE:
                     layer.append(self.down)
                     layer.append(SpectralNorm(c(i, o, 1, 1, 0, bias=False)))
                 return layer
-            elif separable:
+            elif SEPARABLE:
                 return [self.up,
                         SpectralNorm(
                                 c(1, 1, [k] * dim, [s] * dim, [p] * dim, bias=False)),
@@ -118,7 +103,7 @@ class FactorizedConvModule(nn.Module):
         def conv_layer(i, o, k, s, p, c=default_conv, cnt=cnt):
             layers = conv(i, o, k, s, p, c)
             for l in layers:
-                nlin = nlinear()
+                nlin = NonLinear()
                 self.layers.append([nlin, l])
                 setattr(self, f'nlin_{cnt[0]}', nlin)
                 setattr(self, f'layer_{cnt[0]}', l)
@@ -130,11 +115,11 @@ class FactorizedConvModule(nn.Module):
         if depth == 0:
             return
         for _ in range(1, depth):
-            conv_layer(min_features, min_features, default_kernel_size, 1, default_pad)
+            conv_layer(min_features, min_features, DEFAULT_KERNEL_SIZE, 1, default_pad)
         conv_layer(min_features, out_features, kernel, 1, padding)
 
     def forward(self, input: torch.FloatTensor, scales=None):
-        if separable:
+        if SEPARABLE:
             self.down.batch = input.size(0)
         for g in self.layers:
             for l in g:
@@ -147,11 +132,11 @@ class InceptionBlock(nn.Module):
         super().__init__()
 
         transpose = transpose and stride > 1
-        kernels = [factorized_kernel_size] * 3
+        kernels = [FACTORIZED_KERNEL_SIZE] * 3
         scale_first = list(range(3))
         if out_features // len(kernels) * len(
                 kernels) == out_features and out_features // len(
-                kernels) >= min_inception_features:
+                kernels) >= MIN_INCEPTION_FEATURES:
             out_features = out_features // len(kernels)
         else:
             kernels = [max(kernels)]
@@ -161,8 +146,9 @@ class InceptionBlock(nn.Module):
             return dict(kernel=x, stride=stride, padding=conv_pad_tuple(x, stride)[0],
                         transpose=transpose, depth=s)
 
-        c = lambda x, s: FactorizedConvModule(in_features, out_features, **params(x, s),
-                                              dim=dim)
+        def c(x, s):
+            return FactorizedConvModule(in_features, out_features, **params(x, s),
+                                        dim=dim)
 
         layers = [c(k, s) for k, s in zip(kernels, scale_first)]
         self.layers = layers
@@ -171,13 +157,13 @@ class InceptionBlock(nn.Module):
 
         out_features = out_features * len(kernels)
         self.out = lambda *x: torch.cat([l(*x) for l in layers], dim=1)
-        self.nlin = nlinear()
+        self.nlin = NonLinear()
         self.o_conv = SpectralNorm(
                 getattr(nn, f'Conv{dim}d')(out_features, out_features, 1, bias=False))
         self.depth = max(scale_first)
 
-    def forward(self, input):
-        out = self.o_conv(self.nlin(self.out(input)))
+    def forward(self, function_input):
+        out = self.o_conv(self.nlin(self.out(function_input)))
         return out
 
 
@@ -206,10 +192,10 @@ class LinearModule(nn.Module):
     def __init__(self, *args):
         super().__init__()
         self.module = SpectralNorm(nn.Linear(*args))
-        self.nlin = nlinear()
+        self.nlin = NonLinear()
 
-    def forward(self, input):
-        out = self.module(input)
+    def forward(self, function_input):
+        out = self.module(function_input)
         return self.nlin(out), out
 
 
@@ -219,8 +205,8 @@ class Norm(nn.Module):
         self.i_norm = getattr(nn, f'BatchNorm{dim}d')(features, affine=False)
         self.module = module
 
-    def forward(self, input, scale=None):
-        module_input = self.i_norm(input)
+    def forward(self, function_input, scale=None):
+        module_input = self.i_norm(function_input)
         if scale is not None:
             module_input = module_input.mul(scale)
         return self.module(module_input)
@@ -236,11 +222,11 @@ class ResModule(nn.Module):
         torch.nn.init.orthogonal_(self.gamma.data)
         self.gamma.data.add_(m + 1)
 
-    def forward(self, input, layer_input=None, scale=None):
-        args = [input] if layer_input is None else [layer_input]
+    def forward(self, function_input, layer_input=None, scale=None):
+        args = [function_input] if layer_input is None else [layer_input]
         if scale is not None:
             args.append(scale)
-        res = self.residual_module(input)
+        res = self.residual_module(function_input)
         layer_out = self.layer_module(*args)
         gamma = self.gamma.view(*[1] * len(layer_out.size())).expand_as(layer_out)
         return self.merge(res, layer_out, gamma)
@@ -248,13 +234,13 @@ class ResModule(nn.Module):
 
 class ResidualFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input, attention, gamma):
-        ctx.save_for_backward(input, attention, gamma)
-        # x: input, y: attention, z: gamma
+    def forward(ctx, function_input, attention, gamma):
+        ctx.save_for_backward(function_input, attention, gamma)
+        # x: function_input, y: attention, z: gamma
         # (z*y+1)*x
         gamma_attention = attention.mul(gamma)
         gamma_attention.add_(1)
-        gamma_attention.mul_(input)
+        gamma_attention.mul_(function_input)
         return gamma_attention
 
     @staticmethod
@@ -274,19 +260,19 @@ def FeatureAttention(in_size, features, dim=2):
     layers = []
     default_conv = getattr(nn, f'Conv{dim}d')
     input_features = features
-    if separable:
+    if SEPARABLE:
         in_view = ViewFeatures()
         layers.append(in_view)
     for i in range(dim):
         kernel_size = [1] * dim
         kernel_size[i] = in_size
-        layers.extend([SpectralNorm(default_conv(1 if separable else input_features,
-                                                 1 if separable else bfeatures,
+        layers.extend([SpectralNorm(default_conv(1 if SEPARABLE else input_features,
+                                                 1 if SEPARABLE else bfeatures,
                                                  kernel_size=kernel_size,
                                                  bias=False)),
-                       nlinear()])
+                       NonLinear()])
         input_features = bfeatures
-    if separable:
+    if SEPARABLE:
         out_view = ViewFeatures()
         out_view.features = features
         layers.append(out_view)
@@ -303,13 +289,13 @@ class SelfAttention(nn.Module):
         super(SelfAttention, self).__init__()
         args = [features, features, 1]
         self.conv_0 = SpectralNorm(nn.Conv1d(*args, bias=False))
-        self.nlin_0 = nlinear()
+        self.nlin_0 = NonLinear()
         self.conv_1 = SpectralNorm(nn.Conv1d(*args, bias=False))
         self.nlin_1 = nn.Softmax(dim=-1)
 
-    def forward(self, input):
-        batch, features, *size = input.size()
-        output = input.view(batch, features, -1)
+    def forward(self, function_input):
+        batch, features, *size = function_input.size()
+        output = function_input.view(batch, features, -1)
         output = self.nlin_1(self.conv_1(self.nlin_0(self.conv_0(output))))
         output = output.view(batch, features, *size)
         return output
@@ -349,12 +335,14 @@ class Block(nn.Module):
                                                           stride, transpose, dim=dim),
                                            dim=dim),
                                       m=1)
-        if in_size >= min_attention_size and block_number % attention_every_nth_layer == 0:
-            self.res_module_f = ResModule(lambda x: x, Norm(out_features,
-                                                            FeatureAttention(in_size,
-                                                                             out_features,
-                                                                             dim=dim),
-                                                            dim=dim))
+        if (in_size >= MIN_ATTENTION_SIZE and
+                block_number % ATTENTION_EVERY_NTH_LAYER == 0):
+            self.res_module_f = ResModule(lambda x: x,
+                                          Norm(out_features,
+                                               FeatureAttention(in_size,
+                                                                out_features,
+                                                                dim=dim),
+                                               dim=dim))
             self.res_module_s = ResModule(lambda x: x, Norm(out_features,
                                                             SelfAttention(out_features),
                                                             dim=dim))
@@ -363,11 +351,11 @@ class Block(nn.Module):
             self.attention = False
         self.cat_out = cat_out
 
-    def forward(self, input, scales=None):
+    def forward(self, function_input, scales=None):
         if scales is None:
             scales = [None] * 4
-        scaled = self.scale_layer(input)
-        out = self.res_module_i(scaled, input, scales[0])
+        scaled = self.scale_layer(function_input)
+        out = self.res_module_i(scaled, function_input, scales[0])
         if self.attention:
             out = self.res_module_f(out, scale=scales[1])
             out = self.res_module_s(out, scale=scales[2])
@@ -416,9 +404,9 @@ class BlockBlock(nn.Module):
                 else:
                     group_inp = inp
                 mul_blocks.append(
-                        LinearModule(group_inp + input_vector_z * bool(i), inp))
-                mul_blocks.append(LinearModule(inp + input_vector_z, out))
-                attention_scales = [LinearModule(out + input_vector_z, out) for _ in
+                        LinearModule(group_inp + INPUT_VECTOR_Z * bool(i), inp))
+                mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z, out))
+                attention_scales = [LinearModule(out + INPUT_VECTOR_Z, out) for _ in
                                     range(scales)]
                 mul_blocks.extend(attention_scales)
 
@@ -431,7 +419,7 @@ class BlockBlock(nn.Module):
         self.sums = sums
         self.out_features = feature_tuple(block_count - 1)[1]
 
-    def forward(self, input, z=None):
+    def forward(self, function_input, z=None):
         x = None
         for i in range(self.block_count):
             if z is not None:
@@ -440,8 +428,7 @@ class BlockBlock(nn.Module):
                     x, f = self.mul_blocks[self.sums[i] + idx](
                             z if x is None else torch.cat([z, x], dim=1))
                     operand.append(f.view(*f.size(), 1, 1))
-            #                mul_channel_input, operand1 = self.mul_blocks[2*i+1](mul_channel_input)
             else:
                 operand = None
-            input = self.blocks[i](input, scales=operand)
-        return input
+            function_input = self.blocks[i](function_input, scales=operand)
+        return function_input

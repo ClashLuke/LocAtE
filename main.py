@@ -2,63 +2,64 @@
 # coding: utf-8
 
 import os
+import shutil
 # In[1]:
 import time
 from datetime import timedelta
+from zipfile import ZipFile
 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torchvision.utils as vutils
+import wget  # Using pip, condas wget doesnt work
 from torch.backends import cudnn
 
-from libs import *
-from libs.config import *
+from libs import (DATAROOT, DEVICE, DITERS, DLR, D_HINGE, Discriminator, GLR, G_HINGE,
+                  Generator, IMAGES, IMAGE_SIZE, MAIN_N, MEAN_WINDOW, MINIBATCHES,
+                  OUTPUT_FOLDER, USE_GPU, WORKERS, batchsize_function, get_dataloader,
+                  get_dataset, get_model, hinge, minibatch_function, parameter_count,
+                  penalty, plot_hist, plot_images)
 
 cudnn.enabled = True
 cudnn.benchmark = True
 
-os.system(
-        'cd ./images/img_align_celeba && echo "CelebA already on machine." || (wget --no-check-certificate "https://archive.org/download/celeba/Img/img_align_celeba.zip" && mkdir images ; unzip -qq "img_align_celeba.zip" -d "images/")')
-
-# In[2]:
-
-
-# In[3]:
-
-
+if os.path.isdir('./images/img_align_celeba'):
+    print("CelebA already on machine.")
+else:
+    wget.download("https://archive.org/download/celeba/Img/img_align_celeba.zip")
+    try:
+        os.mkdir("images")
+    except FileExistsError:
+        pass
+    with ZipFile("img_align_celeba.zip", 'r') as zf:
+        zf.extractall("images")
 torch.cuda.empty_cache()
 
 # We can use an image folder dataset the way we have it setup.
 # Create the dataset
-augmented_dataset, dataset = get_dataset(dataroot, image_size)
+AUGMENTED_DATASET, DATASET = get_dataset(DATAROOT, IMAGE_SIZE)
 # Create the dataloader
-print(f"Images: {len(get_dataloader(dataset, 1))}")
-real_batch, _ = next(iter(get_dataloader(dataset, 64)))
-plot_images(real_batch)
-augmented_batch, _ = next(iter(get_dataloader(augmented_dataset, 64)))
-plot_images(augmented_batch)
+print(f"Images: {len(get_dataloader(DATASET, 1))}")
+REAL_BATCH, _ = next(iter(get_dataloader(DATASET, 64)))
+plot_images(REAL_BATCH)
+AUGMENTED_BATCH, _ = next(iter(get_dataloader(AUGMENTED_DATASET, 64)))
+plot_images(AUGMENTED_BATCH)
 
-### ################## ###
-### INITIALISE GLOBALS ###
-### ################## ###
+GEN, GEN_OPTIM = get_model(Generator(), GLR, DEVICE)
+DIS, DIS_OPTIM = get_model(Discriminator(), DLR, DEVICE)
 
-netG, optimizerG = get_model(Generator(), glr, device)
-netD, optimizerD = get_model(Discriminator(), dlr, device)
+G_IN = GEN.g_in
 
-g_in = netG.g_in
+FIXED_NOISE = torch.randn(IMAGES, G_IN, device=DEVICE)
 
-fixed_noise = torch.randn(images, g_in, device=device)
-
-img_list = []
-G_losses = []
-D_losses = []
-
-### ########################### ###
-### INITIALISE FOLDER STRUCTURE ###
-### ########################### ###
-
-import shutil
+IMG_LIST = []
+G_LOSSES = []
+D_LOSSES = []
 
 try:
     shutil.rmtree(OUTPUT_FOLDER)
-except:
+except FileNotFoundError:
     pass
 
 try:
@@ -66,52 +67,35 @@ try:
 except FileExistsError:
     pass
 
-print(device)
+print(DEVICE)
 
 # In[14]:
 
 
-print(netG)
-print(f'Parameters: {parameter_count(netG)}')
+print(GEN)
+print(f'Parameters: {parameter_count(GEN)}')
 
 # In[15]:
 
 
-print(netD)
-print(f'Parameters: {parameter_count(netD)}')
+print(DIS)
+print(f'Parameters: {parameter_count(DIS)}')
 
-# In[16]:
-
-
-# In[ ]:
-
-
-# First iteration takes 5~10 minutes
-
-torch.autograd.set_detect_anomaly(True)  # Advanced debugging at the cost of more errors
+torch.autograd.set_detect_anomaly(
+        False)  # Advanced debugging at the cost of more errors
 print("Starting Training LÖÖPS...")
 
 try:
-    os.mkdir(f'error')
-except:
+    os.mkdir('error')
+except FileExistsError:
     pass
-
-### ############# ###
-### TRAINING LOOP ###
-### ############# ###
-
-real_tensor = torch.full((1,), 1, device=device)
-fake_tensor = torch.full((1,), -1, device=device)
 
 
 def train(*args, **kwargs):
-    ditr = diters
-    global device
-    global optimizerG
-    global optimizerD
-    gen = netG
-    dis = netD
-    fnoise = fixed_noise
+    ditr = DITERS
+    gen = GEN
+    dis = DIS
+    fnoise = FIXED_NOISE
     epoch = -1
     while True:
         dhist = []
@@ -120,20 +104,22 @@ def train(*args, **kwargs):
         batch = batchsize_function(epoch)
         subepochs = batchsize_function(epoch, 1)
         miniter = minibatch_function(epoch)
-        subepochs *= minibatch_function(epoch,1)
+        subepochs *= minibatch_function(epoch, 1)
         subepochs *= subepochs
-        print_every_nth_batch = max(1, main_n // max(batch, 64))
-        image_intervall = max(1, 16 * main_n // batch)
+        print_every_nth_batch = max(1, MAIN_N // max(batch, 64))
+        image_intervall = max(1, 16 * MAIN_N // batch)
         try:
             os.mkdir(f'{OUTPUT_FOLDER}/{epoch + 1}')
         except FileExistsError:
             pass
 
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch,
-                                                 shuffle=True, num_workers=workers,
+        dataloader = torch.utils.data.DataLoader(DATASET, batch_size=batch,
+                                                 shuffle=True, num_workers=WORKERS,
                                                  drop_last=True)
-        augmented_dataloader = torch.utils.data.DataLoader(augmented_dataset, batch_size=batch,
-                                                           shuffle=True, num_workers=workers,
+        augmented_dataloader = torch.utils.data.DataLoader(AUGMENTED_DATASET,
+                                                           batch_size=batch,
+                                                           shuffle=True,
+                                                           num_workers=WORKERS,
                                                            drop_last=True)
 
         loader = dataloader
@@ -142,37 +128,38 @@ def train(*args, **kwargs):
         sub_len = len(str(subepochs))
         for sub in range(subepochs):
             start_time = time.time()
-            for i, ((data, _), (aug_data, _)) in enumerate(zip(loader, augmented_dataloader), 1):
-                noise = torch.randn(batch, g_in, device=device)
+            for i, ((data, _), (aug_data, _)) in enumerate(
+                    zip(loader, augmented_dataloader), 1):
+                noise = torch.randn(batch, G_IN, device=DEVICE)
                 if USE_GPU:
                     torch.cuda.empty_cache()
-                data = data.to(device)
+                data = data.to(DEVICE)
                 generated = gen(noise).detach()
 
                 dis.zero_grad()
                 d_true = dis(data).view(-1)
                 d_gen = -dis(generated).view(-1)
-                if d_hinge:
-                  d_error = hinge(d_true) + hinge(d_gen)
+                if D_HINGE:
+                    d_error = hinge(d_true) + hinge(d_gen)
                 else:
-                  d_error = d_true + d_gen
+                    d_error = d_true + d_gen
                 d_error = d_error.mean()
-                (d_error + penalty(d_true, aug_data, dis, device)).backward()
+                (d_error + penalty(d_true, aug_data, dis, DEVICE)).backward()
 
                 if i % miniter == 0:
-                    optimizerD.step()
+                    DIS_OPTIM.step()
                     if (i // miniter) % ditr == 0:
                         dis.requires_grad_(False)
-                        for _ in range(minibatches):
+                        for _ in range(MINIBATCHES):
                             gen.zero_grad()
                             g_error = dis(gen(noise)).view(-1)
-                            if g_hinge:
-                              g_error = hinge(g_error).mean()
+                            if G_HINGE:
+                                g_error = hinge(g_error).mean()
                             else:
-                              g_error = g_error.mean()
+                                g_error = g_error.mean()
                             g_error.backward()
 
-                        optimizerG.step()
+                        GEN_OPTIM.step()
                         dis.requires_grad_(True)
 
                     if i % print_every_nth_batch == 0:
@@ -180,7 +167,7 @@ def train(*args, **kwargs):
                         cdiff_i = i / (time.time() - start_time)
                         try:
                             eta = str(timedelta(seconds=int((batches - i) / cdiff_i)))
-                        except:
+                        except ZeroDivisionError:
                             eta = "Unknown"
                         try:
                             drror = d_error.item() / 2
@@ -188,8 +175,11 @@ def train(*args, **kwargs):
                         except UnboundLocalError:
                             continue
                         print(
-                                f'\r[{epoch + 1}][{sub + 1}/{subepochs}][{i:{batch_len}d}/{batches}] | Rate: {cdiff_i * batch:.2f} Img/s - {cdiff_i:.2f} Upd/s | '
-                                + f'D:{drror:9.4f} - G:{grror:9.4f}| ETA: {eta}', end='', flush=True)
+                                f'\r[{epoch + 1}][{sub + 1}/{subepochs}]['
+                                f'{i:{batch_len}d}/{batches}] | Rate: '
+                                f'{cdiff_i * batch:.2f} Img/s - {cdiff_i:.2f} Upd/s | '
+                                + f'D:{drror:9.4f} - G:{grror:9.4f}| ETA: {eta}',
+                                end='', flush=True)
                         dhist.append(drror)
                         ghist.append(grror)
                     if i % image_intervall == 0:
@@ -201,9 +191,13 @@ def train(*args, **kwargs):
                         if USE_GPU:
                             torch.cuda.empty_cache()
                         gen.train()
-                        plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-{i:0{batch_len}d}.png',
-                                   arr=np.transpose(vutils.make_grid(fake, padding=8, normalize=True).numpy(),
-                                                    (1, 2, 0)))
+                        plt.imsave(
+                                f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-'
+                                f'{i:0{batch_len}d}.png',
+                                arr=np.transpose(vutils.make_grid(fake, padding=8,
+                                                                  normalize=True
+                                                                  ).numpy(),
+                                                 (1, 2, 0)))
             print('')
             if USE_GPU:
                 torch.cuda.empty_cache()
@@ -216,17 +210,21 @@ def train(*args, **kwargs):
                 torch.cuda.empty_cache()
             gen.train()
             plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-END.png',
-                       arr=np.transpose(vutils.make_grid(fake, padding=8, normalize=True).numpy(),
-                                        (1, 2, 0)))
-        div = ((mean_window ** 2 - mean_window) / 2)
-        ma_dhist = [sum(dhist[i + j - 1] * j for j in range(1, mean_window + 1)) / div for i in
-                    range(len(dhist) - mean_window)]
-        ma_ghist = [sum(ghist[i + j - 1] * j for j in range(1, mean_window + 1)) / div for i in
-                    range(len(ghist) - mean_window)]
+                       arr=np.transpose(
+                               vutils.make_grid(fake, padding=8,
+                                                normalize=True).numpy(),
+                               (1, 2, 0)))
+        div = ((MEAN_WINDOW ** 2 - MEAN_WINDOW) / 2)
+        ma_dhist = [sum(dhist[i + j - 1] * j for j in range(1, MEAN_WINDOW + 1)) / div
+                    for i in
+                    range(len(dhist) - MEAN_WINDOW)]
+        ma_ghist = [sum(ghist[i + j - 1] * j for j in range(1, MEAN_WINDOW + 1)) / div
+                    for i in
+                    range(len(ghist) - MEAN_WINDOW)]
         plot_hist(ma_dhist, f'error/{epoch + 1}-d.svg')
         plot_hist(ma_ghist, f'error/{epoch + 1}-g.svg')
-        torch.save(netG.state_dict(), 'netG.torch')
-        torch.save(netD.state_dict(), 'netD.torch')
+        torch.save(GEN.state_dict(), 'netG.torch')
+        torch.save(DIS.state_dict(), 'netD.torch')
 
 
 train()

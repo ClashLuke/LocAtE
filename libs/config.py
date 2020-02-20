@@ -4,68 +4,67 @@ import numpy as np
 import torch
 
 # Set random seed for reproducibility
-manualSeed = 999
-print("Random Seed: ", manualSeed)
-torch.manual_seed(manualSeed)
+print("Random Seed: ", 999)
+torch.manual_seed(999)
 
 OUTPUT_FOLDER = 'gan_outputs'
-ngpu = 1
-USE_GPU = torch.cuda.is_available() and ngpu > 0
+GPU_COUNT = 1
+USE_GPU = torch.cuda.is_available() and GPU_COUNT > 0
 # Root directory for dataset
-dataroot = "images/"
+DATAROOT = "images/"
 
 # Number of workers for dataloader
-workers = 12
+WORKERS = 12
 
 # Batch size during training
-batch_size = 128
-minibatches = 1
+BATCH_SIZE = 128
+MINIBATCHES = 1
 
 
-def batchsize_function(epoch, base=batch_size): return base
+def batchsize_function(epoch, base=BATCH_SIZE): return int((epoch + 1) ** 0.5 * base)
 
 
-def minibatch_function(epoch, base=minibatches): return (epoch+1)*base
+def minibatch_function(epoch, base=MINIBATCHES): return int((epoch + 1) ** 0.5 * base)
 
 
-images = 64
+IMAGES = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-image_size = 32
-end_layer = 1
-start_layer = 0
-mean_window = 16
-factorized_kernel_size = 3
-default_kernel_size = 3
+IMAGE_SIZE = 32
+END_LAYER = 1
+START_LAYER = 0
+MEAN_WINDOW = 16
+FACTORIZED_KERNEL_SIZE = 3
+DEFAULT_KERNEL_SIZE = 3
 # Number of channels in the training images. For color images this is 3
-factor = 2
+FACTOR = 2
 
-d_hinge = True
-g_hinge = True
-g_stride = 2
-d_stride = 2
-layers = int(math.log(image_size, 2))
+D_HINGE = True
+G_HINGE = True
+G_STRIDE = 2
+D_STRIDE = 2
+LAYERS = int(math.log(IMAGE_SIZE, 2))
 
-factorize = False
-separable = False
+FACTORIZE = False
+SEPARABLE = False
 ROOTTANH_GROWTH = 4
-ngf = factor ** int(math.log(image_size, g_stride)) * 16
-ndf = factor ** int(math.log(image_size, d_stride)) * 4
+GEN_FEATURES = FACTOR ** int(math.log(IMAGE_SIZE, G_STRIDE)) * 16
+DIS_FEATURES = FACTOR ** int(math.log(IMAGE_SIZE, D_STRIDE)) * 4
 BOTTLENECK = 4
-min_inception_features = np.uint(-1)  # Never use inception
-min_attention_size = 8
-attention_every_nth_layer = 2
-input_vector_z = image_size
-diters = 1
-main_n = 2 ** 10
+MIN_INCEPTION_FEATURES = np.uint(-1)  # Never use inception
+MIN_ATTENTION_SIZE = 8
+ATTENTION_EVERY_NTH_LAYER = 2
+INPUT_VECTOR_Z = IMAGE_SIZE
+DITERS = 1
+MAIN_N = 2 ** 10
 
-glr = 5e-4
-dlr = 2e-3
-beta1 = 0
-beta2 = 0.9
+GLR = 5e-4
+DLR = 2e-3
+BETA_1 = 0
+BETA_2 = 0.9
 
 if USE_GPU:
-    device = torch.device('cuda:0')
+    DEVICE = torch.device('cuda:0')
 else:
-    device = torch.device('cpu')
+    DEVICE = torch.device('cpu')

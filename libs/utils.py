@@ -1,14 +1,15 @@
 import collections
-from functools import reduce
 import operator
-
+from functools import reduce
 
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
-from .config import *
+from .config import BETA_1, BETA_2
 from .nadam import Nadam
 
 
@@ -19,27 +20,29 @@ def flatten(input_list):
         if input_list:
             yield input_list.pop(0)
 
-def kernel_tuple(k, s):
-    return tuple([max(k, s)] * 2)
+
+def kernel_tuple(kernel_size, stride):
+    return tuple([max(kernel_size, stride)] * 2)
 
 
 def get_feature_list(strides, invert, features):
-    r = range(len(strides) - 1, -1, -1) if invert else range(len(strides))
-    feature_list = [features(i) for i in r]
+    sequence = range(len(strides) - 1, -1, -1) if invert else range(len(strides))
+    feature_list = [features(i) for i in sequence]
     return feature_list
 
 
-def conv_pad_tuple(k, _, dim=2):
-    return tuple([k // 2] * dim)
+def conv_pad_tuple(kernel_size, _, dim=2):
+    return tuple([kernel_size // 2] * dim)
 
 
-def transpose_pad_tuple(k, s, dim=2):
-    return tuple([max(conv_pad_tuple(k, s)[0] - s // 2, 0)] * dim)
+def transpose_pad_tuple(kernel_size, stride, dim=2):
+    return tuple([max(conv_pad_tuple(kernel_size, stride)[0] - stride // 2, 0)] * dim)
 
 
 def view_expand(out_size, tensor):
     if tensor is not None:
-        return tensor.view(tensor.size(0), -1, *[1] * (len(tensor.size()) - 2)).expand(out_size)
+        return tensor.view(tensor.size(0), -1, *[1] * (len(tensor.size()) - 2)).expand(
+                out_size)
     return None
 
 
@@ -63,15 +66,23 @@ def plot_hist(in_list, filename):
     plt.savefig(filename)
 
 
-n = 0
+class PlotImages:
+    def __init__(self):
+        self.image_index = 0
+
+    def plot_images(self, images):
+        prepare_plot()
+        plt.imsave(f'{self.image_index}.png', np.transpose(
+                vutils.make_grid(images, padding=2, normalize=True).cpu().numpy(),
+                (1, 2, 0)))
+        self.image_index += 1
+
+
+PLOT_IMAGES_INSTANCE = PlotImages()
 
 
 def plot_images(images):
-    global n
-    prepare_plot()
-    dat = np.transpose(vutils.make_grid(images, padding=2, normalize=True).cpu().numpy(), (1, 2, 0))
-    plt.imsave(f'{n}.png', np.transpose(vutils.make_grid(images, padding=2, normalize=True).cpu().numpy(), (1, 2, 0)))
-    n += 1
+    PLOT_IMAGES_INSTANCE.plot_images(images)
 
 
 def _get_dataset(dataroot, tfs):
@@ -80,13 +91,17 @@ def _get_dataset(dataroot, tfs):
 
 def get_dataset(dataroot, image_size, jitter=0.2, min_crop_part=0.75):
     base_tfs = transforms.Compose([transforms.Resize(image_size * 2),
-                                   transforms.RandomResizedCrop(image_size, (min_crop_part, 1), (1, 1)),
+                                   transforms.RandomResizedCrop(image_size,
+                                                                (min_crop_part, 1),
+                                                                (1, 1)),
                                    transforms.ToTensor(),
-                                   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+                                   transforms.Normalize((0.5, 0.5, 0.5),
+                                                        (0.5, 0.5, 0.5))])
     tfs = transforms.Compose([transforms.Resize(image_size * 2),
                               transforms.RandomHorizontalFlip(),
                               transforms.ColorJitter(*([jitter] * 3)),
-                              transforms.RandomResizedCrop(image_size, (min_crop_part, 1), (1, 1)),
+                              transforms.RandomResizedCrop(image_size,
+                                                           (min_crop_part, 1), (1, 1)),
                               transforms.ToTensor(),
                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                               ])
@@ -98,38 +113,38 @@ def get_dataloader(dataset, batch_size, workers=4):
                                        shuffle=True, num_workers=workers)
 
 
-def init(m: object):
-    if "norm" not in m.__class__.__name__.lower():
+def init(module: torch.nn.Module):
+    if "norm" not in module.__class__.__name__.lower():
         try:
-            torch.nn.init.orthogonal_(m.weight.data)
+            torch.nn.init.orthogonal_(module.weight.data)
         except AttributeError:
             pass
     else:
         try:
-            torch.nn.init.uniform_(m.weight.data, 0.998, 1.002)
+            torch.nn.init.uniform_(module.weight.data, 0.998, 1.002)
         except AttributeError:
             pass
     try:
-        torch.nn.init.constant_(m.bias.data, 0)
+        torch.nn.init.constant_(module.bias.data, 0)
     except AttributeError:
         pass
 
 
-def hinge(x):
-    return (1 - x).clamp(min=0)
+def hinge(output_tensor: torch.FloatTensor):
+    return (1 - output_tensor).clamp(min=0)
 
 
 def prod(iterable):
     return reduce(operator.mul, iterable, 1)
 
 
-model_parameters = lambda net: filter(lambda p: p.requires_grad, net.parameters())
-prod_sum = lambda x: sum([np.prod(p.size()) for p in x])
-parameter_count = lambda net: prod_sum(model_parameters(net))
+def parameter_count(net):
+    parameters = filter(lambda p: p.requires_grad, net.parameters())
+    return sum(np.prod(p.size()) for p in parameters)
 
 
-def get_model(model, lr, device):
+def get_model(model, learning_rate, device):
     model = model.to(device)
     model.apply(init)
-    opt = Nadam(model.parameters(), lr=lr, betas=(beta1, beta2))
+    opt = Nadam(model.parameters(), lr=learning_rate, betas=(BETA_1, BETA_2))
     return model, opt

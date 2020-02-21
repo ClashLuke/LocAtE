@@ -17,9 +17,9 @@ from torch.backends import cudnn
 
 from libs import (DATAROOT, DEVICE, DITERS, DLR, D_HINGE, Discriminator, GLR, G_HINGE,
                   Generator, IMAGES, IMAGE_SIZE, MAIN_N, MEAN_WINDOW, MINIBATCHES,
-                  OUTPUT_FOLDER, USE_GPU, WORKERS, batchsize_function, get_dataloader,
-                  get_dataset, get_model, hinge, minibatch_function, parameter_count,
-                  penalty, plot_hist, plot_images)
+                  OUTPUT_FOLDER, OVERFIT, USE_GPU, WORKERS, batchsize_function,
+                  get_dataloader, get_dataset, get_model, hinge, minibatch_function,
+                  parameter_count, penalty, plot_hist, plot_images)
 
 cudnn.enabled = True
 cudnn.benchmark = True
@@ -41,9 +41,10 @@ torch.cuda.empty_cache()
 AUGMENTED_DATASET, DATASET = get_dataset(DATAROOT, IMAGE_SIZE)
 # Create the dataloader
 print(f"Images: {len(get_dataloader(DATASET, 1))}")
-REAL_BATCH, _ = next(iter(get_dataloader(DATASET, 64)))
+IMAGE_COUNT = batchsize_function(0) if OVERFIT else 64
+REAL_BATCH, _ = next(iter(get_dataloader(DATASET, IMAGE_COUNT)))
 plot_images(REAL_BATCH)
-AUGMENTED_BATCH, _ = next(iter(get_dataloader(AUGMENTED_DATASET, 64)))
+AUGMENTED_BATCH, _ = next(iter(get_dataloader(AUGMENTED_DATASET, IMAGE_COUNT)))
 plot_images(AUGMENTED_BATCH)
 
 GEN, GEN_OPTIM = get_model(Generator(), GLR, DEVICE)
@@ -59,7 +60,7 @@ D_LOSSES = []
 
 try:
     shutil.rmtree(OUTPUT_FOLDER)
-except FileNotFoundError:
+except OSError:
     pass
 
 try:
@@ -91,6 +92,11 @@ except FileExistsError:
     pass
 
 
+def dataloader_function(batch):
+    while True:
+        yield batch, None
+
+
 def train(*args, **kwargs):
     ditr = DITERS
     gen = GEN
@@ -100,7 +106,7 @@ def train(*args, **kwargs):
     while True:
         dhist = []
         ghist = []
-        epoch += 1
+        epoch = 0 if OVERFIT else epoch + 1
         batch = batchsize_function(epoch)
         subepochs = batchsize_function(epoch, 1)
         miniter = minibatch_function(epoch)
@@ -122,14 +128,17 @@ def train(*args, **kwargs):
                                                            num_workers=WORKERS,
                                                            drop_last=True)
 
-        loader = dataloader
         batches = len(dataloader)
         batch_len = len(str(batches))
         sub_len = len(str(subepochs))
+        if OVERFIT:
+            dataloader = dataloader_function(REAL_BATCH)
+            augmented_dataloader = dataloader_function(AUGMENTED_BATCH)
+
         for sub in range(subepochs):
             start_time = time.time()
             for i, ((data, _), (aug_data, _)) in enumerate(
-                    zip(loader, augmented_dataloader), 1):
+                    zip(dataloader, augmented_dataloader), 1):
                 noise = torch.randn(batch, G_IN, device=DEVICE)
                 if USE_GPU:
                     torch.cuda.empty_cache()

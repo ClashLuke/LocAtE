@@ -17,7 +17,7 @@ DATAROOT = "images/"
 WORKERS = 12
 
 # Batch size during training
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 MINIBATCHES = 1
 
 
@@ -48,6 +48,7 @@ LAYERS = int(math.log(IMAGE_SIZE, 2))
 
 FACTORIZE = False
 SEPARABLE = False
+OVERFIT = False
 ROOTTANH_GROWTH = 4
 GEN_FEATURES = FACTOR ** int(math.log(IMAGE_SIZE, G_STRIDE)) * 16
 DIS_FEATURES = FACTOR ** int(math.log(IMAGE_SIZE, D_STRIDE)) * 4
@@ -59,9 +60,9 @@ INPUT_VECTOR_Z = IMAGE_SIZE
 DITERS = 1
 MAIN_N = 2 ** 10
 
-GLR = 5e-4
-DLR = 2e-3
-BETA_1 = 0
+GLR = 5e-5
+DLR = 2e-4
+BETA_1 = 0.5
 BETA_2 = 0.9
 
 if USE_GPU:

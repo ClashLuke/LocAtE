@@ -1,5 +1,6 @@
 from torch.optim import Optimizer
 
+
 # skipcq
 class Nadam(Optimizer):
     """Implements Nadam algorithm (a variant of Adam based on Nesterov momentum).

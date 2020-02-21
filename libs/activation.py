@@ -7,15 +7,16 @@ from .config import ROOTTANH_GROWTH
 class RootTanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, function_input):
-        #        function_input = function_input.double()
+        # function_input = function_input.double()
         ctx.save_for_backward(function_input)
         output = function_input.pow(2)
         output.add_(1)
         output.pow_(1 / ROOTTANH_GROWTH)
         output.mul_(function_input.tanh())
-        return output.float()
+        return output
 
     @staticmethod
+    # skipcq
     def backward(ctx, grad_output):
         function_input, = ctx.saved_tensors
         x_2 = function_input.pow(2)
@@ -32,7 +33,7 @@ class RootTanh(torch.autograd.Function):
         x_2.mul_(2)
         sech_2_x.div_(x_2)
         sech_2_x.mul_(grad_output)
-        return sech_2_x.float()
+        return sech_2_x
 
 
 class Swish(nn.Module):

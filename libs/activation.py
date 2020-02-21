@@ -36,16 +36,6 @@ class RootTanh(torch.autograd.Function):
         return sech_2_x
 
 
-class Swish(nn.Module):
-    def __init__(self):
-        super(Swish, self).__init__()
-        self.slope = torch.nn.Parameter(torch.ones(1))
-
-    def forward(self, function_input):
-        return function_input.mul(
-                torch.sigmoid(torch.mul(function_input, self.slope.data)))
-
-
 class RootTanhModule(nn.Module):
     def __init__(self):
         super().__init__()

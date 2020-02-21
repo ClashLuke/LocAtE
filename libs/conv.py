@@ -35,8 +35,6 @@ class FactorizedConvModule(torch.nn.Module):
         def conv(i, o, k, s, p, c):
             if FACTORIZE:
                 layer = []
-                if SEPARABLE:
-                    layer.append(self.up)
                 for d in range(dim):
                     conv_kernel = [1] * dim
                     conv_kernel[d] = k
@@ -44,23 +42,20 @@ class FactorizedConvModule(torch.nn.Module):
                     conv_stride[d] = s
                     conv_pad = [0] * dim
                     conv_pad[d] = p
-                    layer.append(SpectralNorm(c(1 if SEPARABLE else i,
-                                                1 if SEPARABLE else o,
+                    layer.append(SpectralNorm(c(i,
+                                                o,
                                                 conv_kernel, conv_stride, conv_pad,
-                                                bias=False)))
-                    if not SEPARABLE:
-                        i = o
-                if SEPARABLE:
-                    layer.append(self.down)
-                    layer.append(SpectralNorm(c(i, o, 1, 1, 0, bias=False)))
+                                                bias=False,
+                                                groups=min(i, o) if SEPARABLE else 1)))
+                    i = o
+                if SEPARABLE and i % min(i, o) == 0 and o % min(i, o) == 0:
+                    layer.append(SpectralNorm(c(o, o, 1, 1, 0, bias=False)))
                 return layer
-            elif SEPARABLE:
-                return [self.up,
-                        SpectralNorm(
-                                c(1, 1, [k] * dim, [s] * dim, [p] * dim, bias=False)),
-                        self.down,
-                        SpectralNorm(
-                                c(i, o, [1] * dim, [1] * dim, [0] * dim, bias=False))]
+            if SEPARABLE and i % min(i, o) == 0 and o % min(i, o) == 0:
+                return [SpectralNorm(c(i, o, [k] * dim, [s] * dim, [p] * dim,
+                                       bias=False, groups=min(i, o))),
+                        SpectralNorm(c(o, o, [1] * dim, [1] * dim, [0] * dim,
+                                       bias=False))]
             return [SpectralNorm(c(i, o, [k] * dim, [s] * dim, [p] * dim, bias=False))]
 
         default_conv = getattr(torch.nn, f'Conv{dim}d')

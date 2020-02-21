@@ -11,17 +11,25 @@ def feature_attention(in_size, features, dim=2):
     layers = []
     default_conv = getattr(torch.nn, f'Conv{dim}d')
     input_features = features
-    for i in range(dim):
-        kernel_size = [1] * dim
-        kernel_size[i] = in_size
-        groups = min(input_features, bfeatures) if SEPARABLE else 1
-        layers.extend([SpectralNorm(default_conv(input_features,
-                                                 bfeatures,
-                                                 kernel_size=kernel_size,
-                                                 bias=False,
-                                                 groups=groups)),
-                       NonLinear()])
-        input_features = bfeatures
+    min_features = min(input_features, bfeatures)
+    if (SEPARABLE and
+            input_features % min_features == 0 and
+            bfeatures % min_features == 0):
+        layers.append(SpectralNorm(default_conv(input_features, bfeatures,
+                                                kernel_size=[in_size] * dim,
+                                                bias=False,
+                                                groups=min_features)))
+    else:
+        for i in range(dim):
+            kernel_size = [1] * dim
+            kernel_size[i] = in_size
+            layers.extend([SpectralNorm(default_conv(input_features,
+                                                     bfeatures,
+                                                     kernel_size=kernel_size,
+                                                     bias=False,
+                                                     groups=1)),
+                           NonLinear()])
+            input_features = bfeatures
     layers.extend([SpectralNorm(default_conv(bfeatures, features,
                                              kernel_size=1, bias=False)),
                    torch.nn.Softmax(dim=1),

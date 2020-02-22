@@ -1,8 +1,8 @@
 import torch
 
 from .activation import NonLinear
-from .config import (BOTTLENECK, DEFAULT_KERNEL_SIZE,
-                     FACTORIZED_KERNEL_SIZE, MIN_INCEPTION_FEATURES)
+from .config import (BOTTLENECK, DEFAULT_KERNEL_SIZE, DEVICE, FACTORIZED_KERNEL_SIZE,
+                     MIN_INCEPTION_FEATURES)
 from .spectral_norm import SpectralNorm
 from .utils import conv_pad_tuple, transpose_pad_tuple
 
@@ -13,10 +13,10 @@ class RevConvFunction(torch.autograd.Function):
         block_input = torch.nn.functional.batch_norm(block_input,
                                                      running_var=torch.ones(
                                                              block_input.size(
-                                                                     1)),
+                                                                     1)).to(DEVICE),
                                                      running_mean=torch.zeros(
                                                              block_input.size(
-                                                                     1)))
+                                                                     1)).to(DEVICE))
         block_input = torch.nn.functional.leaky_relu(block_input)
         block_input = conv(block_input, weight, bias, padding=padding)
         return block_input

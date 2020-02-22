@@ -109,7 +109,7 @@ class RevConv(torch.nn.Module):
         features = features // 2
         self.weight = torch.nn.Parameter(torch.ones((2, features, features,
                                                      *[kernel_size] * dim)))
-        self.bias_zeros = torch.zeros(features)
+        self.bias_zeros = torch.zeros(features).to(DEVICE)
         self.padding = padding
         self.conv = getattr(torch, f'conv{dim}d')
         self.input_tensor_list = input_tensor_list

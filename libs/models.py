@@ -6,6 +6,7 @@ from .config import (DEVICE, DIS_FEATURES, D_STRIDE, END_LAYER, FACTOR, GEN_FEAT
                      G_STRIDE, IMAGE_SIZE, INPUT_VECTOR_Z, LAYERS, START_LAYER)
 from .conv import FactorizedConvModule
 from .scale import Scale
+from .spectral_norm import SpectralNorm
 from .utils import get_feature_list
 
 
@@ -34,7 +35,7 @@ class DFeatures:
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-        clayers = LAYERS - 2
+        clayers = LAYERS - 1
         stride_count_factor = G_STRIDE // 2
         strides = [G_STRIDE] * (clayers // stride_count_factor) + [2] * (
                 clayers % stride_count_factor)
@@ -52,8 +53,8 @@ class Generator(nn.Module):
             out_f = in_f
         feature_list.insert(0, out_f)
         self.conv_block = BlockBlock(len(strides), 2, feature_list, strides, True, True)
-        self.out_conv = FactorizedConvModule(self.conv_block.out_features, 3, 5, True,
-                                             1, 2, 2, False)
+        self.out_conv = SpectralNorm(
+            torch.nn.Conv2d(self.conv_block.out_features, 3, 5, 1, 2))
 
         self.g_in = feature_list[0]
 
@@ -89,7 +90,7 @@ class Discriminator(nn.Module):
                 for i in range(END_LAYER - 1)]
 
         conv.append(
-                FactorizedConvModule(block_block.out_features, 1, 1, False, 1, 0, 1,
+                FactorizedConvModule(block_block.out_features, 2, 1, False, 1, 0, 1,
                                      False))
         conv.insert(0, cat_module)
         conv.insert(1, block_block)

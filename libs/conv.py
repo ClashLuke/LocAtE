@@ -214,6 +214,7 @@ class FactorizedConvModule(torch.nn.Module):
                 stride=stride,
                 padding=input_pad
                 )
+        self.initial_layer = self.initial_layer
         self.layers.append([initial_layer])
         for _ in range(depth):
             conv_layer(out_features, kernel, padding)

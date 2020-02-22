@@ -5,7 +5,6 @@ from .config import (BOTTLENECK, DEFAULT_KERNEL_SIZE,
                      FACTORIZE, FACTORIZED_KERNEL_SIZE, MIN_INCEPTION_FEATURES,
                      SEPARABLE)
 from .spectral_norm import SpectralNorm
-from .util_modules import ViewBatch, ViewFeatures
 from .utils import conv_pad_tuple, transpose_pad_tuple
 
 
@@ -28,9 +27,6 @@ class FactorizedConvModule(torch.nn.Module):
             pad_tuple = conv_pad_tuple
         input_pad = pad_tuple(in_kernel, stride)[0]
         default_pad = DEFAULT_KERNEL_SIZE // 2
-
-        self.up = ViewFeatures()  # (batch*features, 1)
-        self.down = ViewBatch()  # (batch, features)
 
         def conv(i, o, k, s, p, c):
             if FACTORIZE:
@@ -80,8 +76,6 @@ class FactorizedConvModule(torch.nn.Module):
         conv_layer(min_features, out_features, kernel, 1, padding)
 
     def forward(self, input: torch.FloatTensor, scales=None):
-        if SEPARABLE:
-            self.down.batch = input.size(0)
         for g in self.layers:
             for l in g:
                 input = l(input)

@@ -17,7 +17,7 @@ DATAROOT = "images/"
 WORKERS = 12
 
 # Batch size during training
-BATCH_SIZE = 16
+BATCH_SIZE = 128
 MINIBATCHES = 1
 
 
@@ -31,7 +31,7 @@ IMAGES = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-IMAGE_SIZE = 128
+IMAGE_SIZE = 64
 END_LAYER = 1
 START_LAYER = 0
 MEAN_WINDOW = 16

@@ -11,7 +11,8 @@ from .utils import conv_pad_tuple
 
 class RevConvFunction(torch.autograd.Function):
     @staticmethod
-    def conv(block_input, conv, padding, groups, weight, bias):
+    def conv(block_input, conv, padding, groups, *args):
+        weight, bias = args
         block_input = torch.nn.functional.batch_norm(block_input,
                                                      running_var=torch.ones(
                                                              block_input.size(

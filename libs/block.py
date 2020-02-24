@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from .attention import SelfAttention, feature_attention
+from .attention import SelfAttention
 from .config import (ATTENTION_EVERY_NTH_LAYER, DEPTH, INPUT_VECTOR_Z,
                      MIN_ATTENTION_SIZE)
 from .conv import DeepResidualConv
@@ -32,14 +32,6 @@ class Block(nn.Module):
                                            dim=dim),
                                       m=3)
         if self.attention:
-            self.res_module_f = ResModule(lambda x: x,
-                                          Norm(out_features,
-                                               feature_attention(in_size,
-                                                                 out_features,
-                                                                 dim,
-                                                                 input_tensor_list,
-                                                                 False),
-                                               dim=dim))
             self.res_module_s = ResModule(lambda x: x,
                                           Norm(out_features,
                                                SelfAttention(out_features,
@@ -54,8 +46,7 @@ class Block(nn.Module):
         scaled = self.scale_layer(function_input)
         out = self.res_module_i(scaled, function_input, scales[0])
         if self.attention:
-            out = self.res_module_f(out, scale=scales[1])
-            out = self.res_module_s(out, scale=scales[2])
+            out = self.res_module_s(out, scale=scales[1])
         return out
 
 
@@ -88,7 +79,7 @@ class BlockBlock(nn.Module):
             mul_blocks = []
             prev_out = 0
             for i in range(block_count):
-                scales = 2 * blocks[i].attention
+                scales = int(blocks[i].attention)
                 depths.append(1 + scales)
                 sums.append(sums[-1] + scales + 1)
                 inp, out = feature_tuple(i)

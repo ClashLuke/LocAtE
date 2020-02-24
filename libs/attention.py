@@ -1,5 +1,6 @@
 import torch
 
+from .config import DEVICE
 from .conv import RevConvFunction
 
 
@@ -47,7 +48,7 @@ class SelfAttention(torch.nn.Module):
     def __init__(self, features):
         super(SelfAttention, self).__init__()
         self.weight = torch.nn.Parameter(torch.ones(2, features, features, 1))
-        self.zero_bias = torch.zeros(features)
+        self.zero_bias = torch.zeros(features).to(DEVICE)
 
     def forward(self, function_input):
         weight0, weight1 = self.weight

@@ -84,8 +84,10 @@ class RevConvFunction(torch.autograd.Function):
             _, _, *conv0_grad = torch.autograd.grad(y0,
                                                     (x0, x1, *args0),
                                                     grad_y1 + y0g1, retain_graph=True)
-        with torch.no_grad():
-            if not ctx.clear_list:
+        if ctx.clear_list:
+            ctx.input_tensor_list.clear()
+        else:
+            with torch.no_grad():
                 ctx.input_tensor_list.append((x0.data, x1.data))
         return (torch.cat([y0g1 + x0g0, x1g1 + x1g0], dim=1), *[None] * 7,
                 *conv0_grad, *conv1_grad)

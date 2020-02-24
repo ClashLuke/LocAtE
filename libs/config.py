@@ -34,7 +34,7 @@ IMAGES = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-IMAGE_SIZE = 16
+IMAGE_SIZE = 64
 END_LAYER = 1
 START_LAYER = 0
 MEAN_WINDOW = 16

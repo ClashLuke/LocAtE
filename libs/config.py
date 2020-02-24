@@ -16,8 +16,8 @@ DATAROOT = "images/"
 WORKERS = 12
 
 # Batch size during training
-BATCH_SIZE = 16
-MINIBATCHES = 8
+BATCH_SIZE = 128
+MINIBATCHES = 1
 
 
 # Signatures:
@@ -34,7 +34,7 @@ IMAGES = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-IMAGE_SIZE = 128
+IMAGE_SIZE = 64
 END_LAYER = 1
 START_LAYER = 0
 MEAN_WINDOW = 16
@@ -50,12 +50,12 @@ D_STRIDE = 2
 LAYERS = int(math.log(IMAGE_SIZE, 2))
 
 FACTORIZE = False
-SEPARABLE = False
+SEPARABLE = True
 OVERFIT = False
 FEATURE_MULTIPLIER = 1
 ROOTTANH_GROWTH = 4
 
-BASE_FEATURE_FACTOR = 8
+BASE_FEATURE_FACTOR = 16
 
 GEN_FEATURES = FACTOR ** int(math.log(IMAGE_SIZE, G_STRIDE)) * BASE_FEATURE_FACTOR * 3
 DIS_FEATURES = FACTOR ** int(math.log(IMAGE_SIZE, D_STRIDE)) * BASE_FEATURE_FACTOR

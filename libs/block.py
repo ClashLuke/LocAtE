@@ -5,7 +5,6 @@ from .attention import SelfAttention
 from .config import (ATTENTION_EVERY_NTH_LAYER, DEPTH, INPUT_VECTOR_Z,
                      MIN_ATTENTION_SIZE)
 from .conv import DeepResidualConv
-from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
 from .scale import Scale
@@ -21,32 +20,21 @@ class Block(nn.Module):
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
-        self.res_module_i = ResModule(lambda x: x,
-                                      Norm(in_features,
-                                           DeepResidualConv(in_features,
-                                                            out_features, transpose,
-                                                            stride, True,
-                                                            dim, DEPTH,
-                                                            self.input_tensor_list,
-                                                            True,
-                                                            True
-                                                            ),
-                                           dim=dim),
-                                      m=3)
+        self.res_module_i = DeepResidualConv(out_features, out_features, False, 1, True,
+                                             dim, DEPTH, self.input_tensor_list, True,
+                                             True)
         if self.attention:
             self.res_module_s = ResModule(lambda x: x,
-                                          Norm(out_features,
-                                               SpectralNorm(
-                                                   SelfAttention(out_features)),
-                                               dim=dim))
+                                          SpectralNorm(
+                                                  SelfAttention(out_features)))
 
     def forward(self, function_input, scales=None):
         if scales is None:
             scales = [None] * 4
         scaled = self.scale_layer(function_input)
-        out = self.res_module_i(scaled, function_input, scales[0])
+        out = self.res_module_i(scaled, scales[0:2])
         if self.attention:
-            out = self.res_module_s(out, scale=scales[1])
+            out = self.res_module_s(out, scale=scales[2])
         return out
 
 
@@ -64,7 +52,6 @@ class BlockBlock(nn.Module):
         def size(idx):
             out = in_size * prod(factors[:idx + 1])
             nout = int(out + 1 - 1e-12)
-            print(out, nout)
             return nout
 
         blocks = [Block(size(i), *feature_tuple(i), strides[i], transpose, i, dim=dim)
@@ -77,26 +64,15 @@ class BlockBlock(nn.Module):
         depths = []
         if mul_channel:
             mul_blocks = []
-            prev_out = 0
             for i in range(block_count):
-                scales = int(blocks[i].attention)
-                depths.append(1 + scales)
-                sums.append(sums[-1] + scales + 1)
+                scales = 2 + int(blocks[i].attention)
+                depths.append(scales)
+                sums.append(sums[-1] + scales)
                 inp, out = feature_tuple(i)
-                if prev_out and prev_out != inp:
-                    group_inp = prev_out
-                else:
-                    group_inp = inp
-                mul_blocks.append(
-                        LinearModule(group_inp + INPUT_VECTOR_Z * bool(i), inp))
-                if scales:
-                    mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z, out))
-                    attention_scales = [LinearModule(out + INPUT_VECTOR_Z, out) for _ in
-                                        range(1, scales)]
-                    mul_blocks.extend(attention_scales)
-                    prev_out = out
-                else:
-                    prev_out = inp
+                mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z * bool(i), out))
+                attention_scales = [LinearModule(out + INPUT_VECTOR_Z, out) for _ in
+                                    range(1, scales)]
+                mul_blocks.extend(attention_scales)
 
             self.mul_blocks = mul_blocks
 

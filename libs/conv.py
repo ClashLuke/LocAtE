@@ -12,7 +12,7 @@ from .utils import conv_pad_tuple
 class RevConvFunction(torch.autograd.Function):
     @staticmethod
     def conv(block_input, conv, padding, groups, *args):
-        weight, bias = args
+        weight, bias, scale = args
         block_input = torch.nn.functional.batch_norm(block_input,
                                                      running_var=torch.ones(
                                                              block_input.size(
@@ -20,6 +20,8 @@ class RevConvFunction(torch.autograd.Function):
                                                      running_mean=torch.zeros(
                                                              block_input.size(
                                                                      1)).to(DEVICE))
+        if scale is not None:
+            block_input *= scale
         block_input = nonlinear_function(block_input)
         block_input = conv(block_input, weight, bias, padding=padding, groups=groups)
         return block_input
@@ -67,13 +69,23 @@ class RevConvFunction(torch.autograd.Function):
             x0.retain_grad()
             x1.retain_grad()
             for a in args0:
-                a.requires_grad_(True)
-                a.retain_grad()
+                try:
+                    a.requires_grad_(True)
+                    a.retain_grad()
+                except AttributeError:
+                    pass
             for a in args1:
-                a.requires_grad_(True)
-                a.retain_grad()
+                try:
+                    a.requires_grad_(True)
+                    a.retain_grad()
+                except AttributeError:
+                    pass
             y0 = RevConvFunction.conv(x1, conv, padding, groups, *args0) + x0
             y1 = RevConvFunction.conv(y0, conv, padding, groups, *args1) + x1
+            delete = args0[-1] is None
+            if delete:
+                args0 = args0[:-1]
+                args1 = args1[:-1]
             x0g0, x1g0, *conv0_grad = torch.autograd.grad(y0, (
                     x0, x1, *args0), grad_y1, retain_graph=True)
             x1g1, y0g1, *conv1_grad = torch.autograd.grad(y1, (
@@ -86,6 +98,9 @@ class RevConvFunction(torch.autograd.Function):
                 x0 = x0.data
                 x1 = x1.data
                 ctx.input_tensor_list.append((x0, x1))
+        if delete:
+            conv0_grad = (*conv0_grad, None)
+            conv1_grad = (*conv1_grad, None)
         return (torch.cat([y0g1 + x0g0, x1g1 + x1g0], dim=1), *[None] * 7,
                 *conv0_grad, *conv1_grad)
 
@@ -133,12 +148,17 @@ class RevConv(torch.nn.Module):
         self.append_output = append_output
         self.clear_list = clear_list
 
-    def forward(self, function_input):
+    def forward(self, function_input, scale=None):
         weight0, weight1 = self.weight
+        if scale is None:
+            scale0, scale1 = None, None
+        else:
+            scale0, scale1 = scale.chunk(2, 1)
         return rev_conv_function(function_input, self.conv, self.input_tensor_list,
-                                 self.append_output, self.padding, 2, self.groups,
+                                 self.append_output, self.padding, 3, self.groups,
                                  self.clear_list,
-                                 weight0, self.bias_zeros, weight1, self.bias_zeros)
+                                 weight0, self.bias_zeros, scale0,
+                                 weight1, self.bias_zeros, scale1)
 
     def extra_repr(self):
         return f'features={self.features}, ' \
@@ -230,10 +250,12 @@ class ActivatedBaseConv(torch.nn.Module):
                 conv_0_conv = getattr(torch.nn, f'ConvTranspose{dim}d')
             else:
                 conv_0_conv = conv
-            self.conv_0 = SpectralNorm(conv_0_conv(in_channels=in_features, padding=pad,
+            self.conv_0 = Norm(in_features,
+                               SpectralNorm(
+                                       conv_0_conv(in_channels=in_features, padding=pad,
                                                    out_channels=in_features,
                                                    kernel_size=kernel, stride=stride,
-                                                   groups=groups))
+                                                   groups=groups)))
 
         if second_rev:
             self.conv_1 = SpectralNorm(RevConv(input_tensor_list=input_tensor_list,
@@ -242,14 +264,16 @@ class ActivatedBaseConv(torch.nn.Module):
                                                clear_list=False)
                                        )
         else:
-            self.conv_1 = SpectralNorm(conv(
+            self.conv_1 = Norm(in_features, SpectralNorm(conv(
                     kernel_size=1, stride=1, padding=0, out_channels=out_features,
                     bias=False, in_channels=in_features
-                    ))
+                    )))
 
-    def forward(self, function_input):
-        return self.conv_1(nonlinear_function(
-                self.conv_0(self.scale(nonlinear_function(function_input)))))
+    def forward(self, function_input, scale=None):
+        if scale is None:
+            scale = [None, None]
+        return self.conv_1(self.conv_0(self.scale(function_input), scale[0]),
+                           scale[1])
 
 
 class DeepResidualConv(torch.nn.Module):
@@ -266,7 +290,7 @@ class DeepResidualConv(torch.nn.Module):
         if input_tensor_list is None:
             input_tensor_list = []
 
-        def add_conv(in_features, out_features, residual=True, normalize=False,
+        def add_conv(in_features, out_features, residual=True,
                      transpose=False, stride=1, kernel=3, pad=conv_pad_tuple,
                      input_tensor_list=input_tensor_list, append_output=False,
                      clear_list=False):
@@ -275,8 +299,6 @@ class DeepResidualConv(torch.nn.Module):
                                       kernel=kernel, pad=pad(kernel, stride),
                                       append_output=append_output,
                                       clear_list=clear_list)
-            if normalize:
-                layer = Norm(in_features, layer, dim)
             if residual and in_features == out_features:
                 layer = ResModule(lambda x: x, layer, m=1)
             setattr(self, f'conv_{cnt[0]}', layer)
@@ -284,20 +306,19 @@ class DeepResidualConv(torch.nn.Module):
             self.layers.append(layer)
 
         if in_features != out_features:
-            add_conv(in_features, out_features, False, False,
+            add_conv(in_features, out_features, False,
                      transpose, stride, input_tensor_list=[],
                      append_output=True, clear_list=True)
         else:
             depth += 1
         i = -1
         for i in range(depth - 2):
-            add_conv(out_features, out_features, normalize=bool(i),
-                     clear_list=clear_list and i == 0)
+            add_conv(out_features, out_features, clear_list=clear_list and i == 0)
         if (depth - 1) > 0:
-            add_conv(out_features, out_features, normalize=bool(i),
-                     append_output=append_output, clear_list=clear_list and i == -1)
+            add_conv(out_features, out_features, append_output=append_output,
+                     clear_list=clear_list and i == -1)
 
-    def forward(self, function_input: torch.FloatTensor, ):
+    def forward(self, function_input: torch.FloatTensor, scales=None):
         for layer in self.layers:
-            function_input = layer(function_input)
+            function_input = layer(function_input, scale=scales)
         return function_input

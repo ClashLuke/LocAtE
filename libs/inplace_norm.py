@@ -32,7 +32,7 @@ mean_sub_mul_div_add = MeanSubMulDivAdd.apply
 
 
 class InPlaceNorm(torch.nn.Module):
-    def __init__(self, features, dim=2):
+    def __init__(self, features=1, dim=2):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.ones((1, features, *[1] * dim)))
         self.bias = torch.nn.Parameter(torch.zeros((1, features, *[1] * dim)))

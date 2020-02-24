@@ -36,15 +36,16 @@ class RootTanh(torch.autograd.Function):
         return sech_2_x
 
 
-root_tanh_function = RootTanh.apply
+nonlinear_function = RootTanh.apply  # skipcq
 
 
 class RootTanhModule(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, function_input):
-        return root_tanh_function(function_input)
+    @staticmethod
+    def forward(function_input):
+        return nonlinear_function(function_input)
 
 
 NonLinear = RootTanhModule

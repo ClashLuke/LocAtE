@@ -4,9 +4,8 @@ from torch import nn
 from .block import BlockBlock, ResModule
 from .config import (DEVICE, DIS_FEATURES, D_STRIDE, END_LAYER, FACTOR, GEN_FEATURES,
                      G_STRIDE, IMAGE_SIZE, INPUT_VECTOR_Z, LAYERS, START_LAYER)
-from .conv import FactorizedConvModule
+from .conv import DeepResidualConv
 from .scale import Scale
-from .spectral_norm import SpectralNorm
 from .utils import get_feature_list
 
 
@@ -44,17 +43,16 @@ class Generator(nn.Module):
         g_features = GFeatures(0, clayers)
         out_f = g_features(clayers)
         feature_list = get_feature_list(strides, True, g_features)
-        self.input_block = nn.Sequential(*[ResModule(lambda x: x,
-                                                     FactorizedConvModule(in_f, out_f,
-                                                                          3, False, 1,
-                                                                          1, 1))
-                                           for _ in range(START_LAYER)])
-        if START_LAYER < 1:
+        if START_LAYER >= 1:
+            self.input_block = DeepResidualConv(in_f, out_f, False, 1, False, 2,
+                                                START_LAYER)
+        else:
+            self.input_block = lambda x: x
             out_f = in_f
         feature_list.insert(0, out_f)
         self.conv_block = BlockBlock(len(strides), 2, feature_list, strides, True, True)
-        self.out_conv = SpectralNorm(
-            torch.nn.Conv2d(self.conv_block.out_features, 3, 5, 1, 2))
+        self.out_conv = DeepResidualConv(self.conv_block.out_features, 3, False,
+                                         1, False, 2, 1)
 
         self.g_in = feature_list[0]
 
@@ -79,19 +77,18 @@ class Discriminator(nn.Module):
         feature_list = get_feature_list(strides, False, d_features)
         feature_list.append(feature_list[-1])
         cat_module = ResModule(Scale(3, d_features(0), 2, False),
-                               FactorizedConvModule(3, d_features(0), 5, False, 1, 2, 2,
-                                                    False))
+                               DeepResidualConv(3, d_features(0), False, 2, False, 2,
+                                                1))
         block_block = BlockBlock(len(strides), IMAGE_SIZE // 2, feature_list, strides,
                                  False)
         conv = [ResModule(lambda x: x,
-                          FactorizedConvModule(block_block.out_features,
-                                               block_block.out_features, 1, False, 1, 0,
-                                               1))
+                          DeepResidualConv(block_block.out_features,
+                                           block_block.out_features, 1, False, 1, 0,
+                                           1))
                 for i in range(END_LAYER - 1)]
 
         conv.append(
-                FactorizedConvModule(block_block.out_features, 2, 1, False, 1, 0, 1,
-                                     False))
+            DeepResidualConv(block_block.out_features, 1, False, 1, False, 2, 1))
         conv.insert(0, cat_module)
         conv.insert(1, block_block)
         self.main = nn.Sequential(*conv)

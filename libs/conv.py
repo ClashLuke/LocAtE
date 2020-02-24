@@ -1,8 +1,9 @@
 import torch
 
-from .activation import NonLinear
-from .config import (BOTTLENECK, DEFAULT_KERNEL_SIZE, DEVICE, FACTORIZED_KERNEL_SIZE,
-                     MIN_INCEPTION_FEATURES)
+from .activation import nonlinear_function
+from .config import (BOTTLENECK, FEATURE_MULTIPLIER, SEPARABLE)
+from .inplace_norm import Norm
+from .merge import ResModule
 from .spectral_norm import SpectralNorm
 from .utils import conv_pad_tuple, transpose_pad_tuple
 
@@ -176,92 +177,65 @@ class BottleneckRevConv(torch.nn.Module):
 class FactorizedConvModule(torch.nn.Module):
     def __init__(self, in_features, out_features, kernel, transpose, depth, padding,
                  stride, use_bottleneck=True, dim=2):
+class ActivatedBaseConv(torch.nn.Module):
+    def __init__(self, in_features, out_features, conv, kernel=5, stride=1, pad=2):
+        super().__init__()
+        self.conv_0 = SpectralNorm(conv(in_channels=in_features, kernel_size=kernel,
+                                        stride=stride, padding=pad, bias=False,
+                                        out_channels=in_features * FEATURE_MULTIPLIER,
+                                        groups=in_features if SEPARABLE else 1))
+        self.conv_1 = SpectralNorm(conv(kernel_size=1, stride=1, padding=0,
+                                        out_channels=out_features, bias=False,
+                                        in_channels=in_features * FEATURE_MULTIPLIER))
+
+    def forward(self, function_input):
+        return self.conv_1(nonlinear_function(
+                self.conv_0(nonlinear_function(function_input))))
+
+
+class DeepResidualConv(torch.nn.Module):
+    def __init__(self, in_features, out_features, transpose, stride,
+                 use_bottleneck=True, dim=2, depth=1):
         super().__init__()
         min_features = min(in_features, out_features)
         if use_bottleneck and max(in_features,
                                   out_features) // min_features < BOTTLENECK:
             min_features //= BOTTLENECK
         self.final_layer = None
-        in_kernel = stride * 2 + int(not transpose)
+        kernel = stride * 2 + int(not transpose)
         cnt = [0]
         self.layers = []
-        self.input_tensor_list = []
 
         if transpose:
             pad_tuple = transpose_pad_tuple
         else:
             pad_tuple = conv_pad_tuple
-        input_pad = pad_tuple(in_kernel, stride)[0]
-        default_pad = DEFAULT_KERNEL_SIZE // 2
 
-        def conv(f, k, p, c):
-            return [SpectralNorm(c(self.input_tensor_list, f, k, p, dim))]
+        default_conv = getattr(torch.nn, f'Conv{dim}d')
 
-        default_conv = RevConv
+        def add_conv(in_features, out_features, residual=True, normalize=False,
+                     transpose=False, stride=1, **kwargs):
+            conv = getattr(torch.nn,
+                           f'ConvTranspose{dim}d') if transpose else default_conv
+            layer = ActivatedBaseConv(in_features, out_features, conv, stride=stride,
+                                      **kwargs)
+            if normalize:
+                layer = Norm(in_features, layer, dim)
+            if residual and in_features == out_features:
+                layer = ResModule(lambda x: x, layer, m=1)
+            setattr(self, f'conv_{cnt[0]}', layer)
+            cnt[0] += 1
+            self.layers.append(layer)
 
-        def conv_layer(f, k, p, c=default_conv, cnt=cnt):
-            layers = conv(f, k, p, c)
-            for l in layers:
-                self.layers.append([l])
-                setattr(self, f'layer_{cnt[0]}', l)
-                cnt[0] += 1
+        add_conv(in_features, min_features if depth > 1 else out_features, False, False,
+                 transpose, stride, kernel=kernel, pad=pad_tuple(kernel, stride))
+        for i in range(depth - 2):
+            add_conv(min_features, min_features, default_conv, normalize=bool(i))
+        if depth > 1:
+            add_conv(min_features, out_features, default_conv,
+                     normalize=bool(depth - 2))
 
-        initial_layer = getattr(torch.nn,
-                                f'ConvTranspose{dim}d' if transpose else
-                                f'Conv{dim}d')(
-                in_channels=in_features, out_channels=out_features,
-                kernel_size=in_kernel,
-                stride=stride,
-                padding=input_pad
-                )
-        self.initial_layer = initial_layer
-        self.layers.append([initial_layer])
-        for _ in range(depth):
-            conv_layer(out_features, kernel, padding)
-
-    def forward(self, input: torch.FloatTensor, scales=None):
-        for g in self.layers:
-            for l in g:
-                input = l(input)
-        return input
-
-
-class InceptionBlock(torch.nn.Module):
-    def __init__(self, in_features, out_features, stride, transpose, dim=2):
-        super().__init__()
-
-        transpose = transpose and stride > 1
-        kernels = [FACTORIZED_KERNEL_SIZE] * 3
-        scale_first = list(range(3))
-        if out_features // len(kernels) * len(
-                kernels) == out_features and out_features // len(
-                kernels) >= MIN_INCEPTION_FEATURES:
-            out_features = out_features // len(kernels)
-        else:
-            kernels = [max(kernels)]
-            scale_first = [max(scale_first)]
-
-        def params(x, s):
-            return dict(kernel=x, stride=stride, padding=conv_pad_tuple(x, stride)[0],
-                        transpose=transpose, depth=s)
-
-        def c(x, s):
-            return FactorizedConvModule(in_features, out_features, **params(x, s),
-                                        dim=dim)
-
-        layers = [c(k, s) for k, s in zip(kernels, scale_first)]
-        self.layers = layers
-        for i, L in enumerate(layers):
-            setattr(self, f'factorized_conv_{i}', L)
-
-        out_features = out_features * len(kernels)
-        self.out = lambda *x: torch.cat([l(*x) for l in layers], dim=1)
-        self.nlin = NonLinear()
-        self.o_conv = SpectralNorm(
-                getattr(torch.nn, f'Conv{dim}d')(out_features, out_features, 1,
-                                                 bias=False))
-        self.depth = max(scale_first)
-
-    def forward(self, function_input):
-        out = self.o_conv(self.nlin(self.out(function_input)))
-        return out
+    def forward(self, function_input: torch.FloatTensor, ):
+        for layer in self.layers:
+            function_input = layer(function_input)
+        return function_input

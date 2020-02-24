@@ -2,9 +2,9 @@ import torch
 from torch import nn
 
 from .attention import SelfAttention, feature_attention
-from .config import (ATTENTION_EVERY_NTH_LAYER, INPUT_VECTOR_Z,
+from .config import (ATTENTION_EVERY_NTH_LAYER, DEPTH, INPUT_VECTOR_Z,
                      MIN_ATTENTION_SIZE)
-from .conv import InceptionBlock
+from .conv import DeepResidualConv
 from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
@@ -19,10 +19,12 @@ class Block(nn.Module):
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
         self.res_module_i = ResModule(lambda x: x,
                                       Norm(in_features,
-                                           InceptionBlock(in_features, out_features,
-                                                          stride, transpose, dim=dim),
+                                           DeepResidualConv(in_features,
+                                                            out_features, transpose,
+                                                            stride,
+                                                            depth=DEPTH, dim=dim),
                                            dim=dim),
-                                      m=1)
+                                      m=3)
         if (in_size >= MIN_ATTENTION_SIZE and
                 block_number % ATTENTION_EVERY_NTH_LAYER == 0):
             self.res_module_f = ResModule(lambda x: x,

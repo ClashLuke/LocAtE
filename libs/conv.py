@@ -318,7 +318,7 @@ class DeepResidualConv(torch.nn.Module):
             add_conv(out_features, out_features, append_output=append_output,
                      clear_list=clear_list and i == -1)
 
-    def forward(self, function_input: torch.FloatTensor, scales=None):
+    def forward(self, function_input: torch.FloatTensor, scale=None):
         for layer in self.layers:
-            function_input = layer(function_input, scale=scales)
+            function_input = layer(function_input, scale=scale)
         return function_input

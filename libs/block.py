@@ -27,7 +27,8 @@ class Block(nn.Module):
                                                             stride, True,
                                                             dim, DEPTH,
                                                             input_tensor_list,
-                                                            not self.attention
+                                                            not self.attention,
+                                                            True
                                                             ),
                                            dim=dim),
                                       m=3)

@@ -16,13 +16,15 @@ class Block(nn.Module):
     def __init__(self, in_size, in_features, out_features, stride, transpose,
                  block_number, cat_out=True, dim=2):
         super().__init__()
+        input_tensor_list = []
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
         self.res_module_i = ResModule(lambda x: x,
                                       Norm(in_features,
                                            DeepResidualConv(in_features,
                                                             out_features, transpose,
-                                                            stride,
-                                                            depth=DEPTH, dim=dim),
+                                                            stride, True,
+                                                            dim, DEPTH,
+                                                            input_tensor_list),
                                            dim=dim),
                                       m=3)
         if (in_size >= MIN_ATTENTION_SIZE and
@@ -31,11 +33,15 @@ class Block(nn.Module):
                                           Norm(out_features,
                                                feature_attention(in_size,
                                                                  out_features,
-                                                                 dim=dim),
+                                                                 dim,
+                                                                 input_tensor_list),
                                                dim=dim))
-            self.res_module_s = ResModule(lambda x: x, Norm(out_features,
-                                                            SelfAttention(out_features),
-                                                            dim=dim))
+            self.res_module_s = ResModule(lambda x: x,
+                                          Norm(out_features,
+                                               SelfAttention(out_features,
+                                                             dim,
+                                                             input_tensor_list),
+                                               dim=dim))
             self.attention = True
         else:
             self.attention = False

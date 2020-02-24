@@ -112,9 +112,12 @@ class RevConv(torch.nn.Module):
     def __init__(self, input_tensor_list, features, kernel_size=1, padding=0,
                  dim=1, groups=1):
         super().__init__()
+        if groups != 1:
+            groups //= 2
         features = features // 2
+        out_features = features // groups
         conv = getattr(torch.nn.functional, f'conv{dim}d')
-        self.weight = torch.nn.Parameter(torch.ones((2, features, features // groups,
+        self.weight = torch.nn.Parameter(torch.ones((2, features, out_features,
                                                      *[kernel_size] * dim)))
         self.bias_zeros = torch.zeros(features).to(DEVICE)
         self.padding = padding
@@ -191,18 +194,25 @@ class BottleneckRevConv(torch.nn.Module):
 
 class ActivatedBaseConv(torch.nn.Module):
     def __init__(self, input_tensor_list, in_features, out_features, transpose, dim,
-                 kernel=5, stride=1, pad=2):
+                 kernel=5, stride=1, pad=2, separable=False):
         super().__init__()
 
         conv = getattr(torch.nn, f'Conv{dim}d')
+
+        separable = SEPARABLE or separable
+        groups = in_features if separable else 1
+
+        try:
+            pad = pad[0]
+        except TypeError:
+            pass
 
         mod_2 = in_features % 2 == 0 and out_features % 2 == 0
         if mod_2:
             self.scale = Scale(in_features, in_features, stride, transpose)
             self.conv_0 = SpectralNorm(RevConv(input_tensor_list=input_tensor_list,
                                                features=in_features, kernel_size=kernel,
-                                               padding=pad, dim=dim,
-                                               groups=in_features if SEPARABLE else 1))
+                                               padding=pad, dim=dim, groups=groups))
         else:
             self.scale = lambda x: x
             if transpose:
@@ -211,10 +221,8 @@ class ActivatedBaseConv(torch.nn.Module):
                 conv_0_conv = conv
             self.conv_0 = SpectralNorm(conv_0_conv(in_channels=in_features, padding=pad,
                                                    out_channels=in_features,
-                                                   kernel_size=kernel,
-                                                   groups=in_features if SEPARABLE
-                                                   else 1,
-                                                   stride=stride))
+                                                   kernel_size=kernel, stride=stride,
+                                                   groups=groups))
 
         if mod_2 and in_features == out_features:
             self.conv_1 = SpectralNorm(RevConv(input_tensor_list=input_tensor_list,
@@ -233,7 +241,7 @@ class ActivatedBaseConv(torch.nn.Module):
 
 class DeepResidualConv(torch.nn.Module):
     def __init__(self, in_features, out_features, transpose, stride,
-                 use_bottleneck=True, dim=2, depth=1):
+                 use_bottleneck=True, dim=2, depth=1, input_tensor_list=None):
         super().__init__()
         min_features = min(in_features, out_features)
         if use_bottleneck and max(in_features,
@@ -241,11 +249,13 @@ class DeepResidualConv(torch.nn.Module):
             min_features //= BOTTLENECK
         cnt = [0]
         self.layers = []
-        self.input_tensor_list = []
+        if input_tensor_list is None:
+            input_tensor_list = []
 
         def add_conv(in_features, out_features, residual=True, normalize=False,
-                     transpose=False, stride=1, kernel=3, pad=conv_pad_tuple):
-            layer = ActivatedBaseConv(self.input_tensor_list, in_features, out_features,
+                     transpose=False, stride=1, kernel=3, pad=conv_pad_tuple,
+                     input_tensor_list=input_tensor_list):
+            layer = ActivatedBaseConv(input_tensor_list, in_features, out_features,
                                       transpose, dim, stride=stride,
                                       kernel=kernel, pad=pad(kernel, stride))
             if normalize:
@@ -256,12 +266,10 @@ class DeepResidualConv(torch.nn.Module):
             cnt[0] += 1
             self.layers.append(layer)
 
-        add_conv(in_features, min_features if depth > 1 else out_features, False, False,
-                 transpose, stride)
-        for i in range(depth - 2):
-            add_conv(min_features, min_features, normalize=bool(i))
-        if depth > 1:
-            add_conv(min_features, out_features, normalize=bool(depth - 2))
+        add_conv(in_features, out_features, False, False,
+                 transpose, stride, input_tensor_list=[])
+        for i in range(depth - 1):
+            add_conv(out_features, out_features, normalize=bool(i))
 
     def forward(self, function_input: torch.FloatTensor, ):
         for layer in self.layers:

@@ -16,7 +16,7 @@ class Block(nn.Module):
     def __init__(self, in_size, in_features, out_features, stride, transpose,
                  block_number, dim=2):
         super().__init__()
-        input_tensor_list = []
+        self.input_tensor_list = []
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
@@ -26,8 +26,8 @@ class Block(nn.Module):
                                                             out_features, transpose,
                                                             stride, True,
                                                             dim, DEPTH,
-                                                            input_tensor_list,
-                                                            not self.attention,
+                                                            self.input_tensor_list,
+                                                            True,
                                                             True
                                                             ),
                                            dim=dim),
@@ -35,10 +35,7 @@ class Block(nn.Module):
         if self.attention:
             self.res_module_s = ResModule(lambda x: x,
                                           Norm(out_features,
-                                               SelfAttention(out_features,
-                                                             dim,
-                                                             input_tensor_list,
-                                                             True),
+                                               SelfAttention(out_features),
                                                dim=dim))
 
     def forward(self, function_input, scales=None):

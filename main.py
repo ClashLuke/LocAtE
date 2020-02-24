@@ -15,11 +15,11 @@ import torchvision.utils as vutils
 import wget  # Using pip, condas wget doesnt work
 from torch.backends import cudnn
 
-from libs import (DATAROOT, DEVICE, DITERS, DLR, Discriminator, GLR, G_HINGE,
-                  Generator, IMAGES, IMAGE_SIZE, MAIN_N, MEAN_WINDOW, MINIBATCHES,
-                  OUTPUT_FOLDER, OVERFIT, USE_GPU, WORKERS, batchsize_function,
-                  get_dataloader, get_dataset, get_model, hinge, minibatch_function,
-                  parameter_count, plot_hist, plot_images)
+from libs import (DATAROOT, DEVICE, DITERS, DLR, Discriminator, GLR, G_HINGE, Generator,
+                  IMAGES, IMAGE_SIZE, MAIN_N, MEAN_WINDOW, MINIBATCHES, OUTPUT_FOLDER,
+                  OVERFIT, USE_GPU, WORKERS, batchsize_function, get_dataloader,
+                  get_dataset, get_model, hinge, minibatch_function, parameter_count,
+                  penalty, plot_hist, plot_images)
 
 cudnn.enabled = True
 cudnn.benchmark = True
@@ -146,14 +146,13 @@ def train(*args, **kwargs):
                 generated = gen(noise).detach()
 
                 dis.zero_grad()
-                # TODO: Readd gradient penalty.
-                #  It had to be removed as backprop was called multipled times but the
-                #  other tensors weren't removed from the list (RevFunction/Backward)
-                true_err = hinge(dis(data).view(-1)).mean()
-                true_err.backward()
-                gen_err = hinge(-dis(generated).view(-1)).mean()
-                gen_err.backward()
-                d_error = true_err + gen_err
+
+                true_error = hinge(dis(data).view(-1)).mean()
+                gen_error = hinge(-dis(generated).view(-1)).mean()
+                penalty_error = penalty(true_error, aug_data, dis, DEVICE)
+                d_error = true_error + gen_error
+                (d_error + penalty_error).backward()
+
                 if i % miniter == 0:
                     DIS_OPTIM.step()
                     if (i // miniter) % ditr == 0:

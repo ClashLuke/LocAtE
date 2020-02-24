@@ -88,7 +88,7 @@ class Discriminator(nn.Module):
                 for i in range(END_LAYER - 1)]
 
         conv.append(
-            DeepResidualConv(block_block.out_features, 1, False, 1, False, 2, 1))
+                DeepResidualConv(block_block.out_features, 1, False, 1, False, 2, 1))
         conv.insert(0, cat_module)
         conv.insert(1, block_block)
         self.main = nn.Sequential(*conv)

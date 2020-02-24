@@ -34,7 +34,7 @@ IMAGES = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-IMAGE_SIZE = 128
+IMAGE_SIZE = 16
 END_LAYER = 1
 START_LAYER = 0
 MEAN_WINDOW = 16
@@ -52,7 +52,6 @@ LAYERS = int(math.log(IMAGE_SIZE, 2))
 FACTORIZE = False
 SEPARABLE = False
 OVERFIT = False
-FEATURE_MULTIPLIER = 1
 ROOTTANH_GROWTH = 4
 
 BASE_FEATURE_FACTOR = 8
@@ -65,7 +64,7 @@ ATTENTION_EVERY_NTH_LAYER = 2
 INPUT_VECTOR_Z = IMAGE_SIZE
 DITERS = 1
 MAIN_N = 2 ** 10
-DEPTH = 1  # There is no visible advantage (after 15 epochs) of bigger depth
+DEPTH = 3  # There is no visible advantage (after 15 epochs) of bigger depth
 
 GLR = 5e-4
 DLR = 2e-3

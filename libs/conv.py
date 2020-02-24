@@ -242,10 +242,10 @@ class ActivatedBaseConv(torch.nn.Module):
                                                clear_list=False)
                                        )
         else:
-            self.conv_1 = conv(
+            self.conv_1 = SpectralNorm(conv(
                     kernel_size=1, stride=1, padding=0, out_channels=out_features,
                     bias=False, in_channels=in_features
-                    )
+                    ))
 
     def forward(self, function_input):
         return self.conv_1(nonlinear_function(

@@ -195,18 +195,25 @@ class ActivatedBaseConv(torch.nn.Module):
 
         conv = getattr(torch.nn, f'Conv{dim}d')
 
-        self.scale = Scale(in_features, in_features, stride, transpose)
         mod_2 = in_features % 2 == 0 and out_features % 2 == 0
         if mod_2:
+            self.scale = Scale(in_features, in_features, stride, transpose)
             self.conv_0 = SpectralNorm(RevConv(input_tensor_list=input_tensor_list,
                                                features=in_features, kernel_size=kernel,
                                                padding=pad, dim=dim,
                                                groups=in_features if SEPARABLE else 1))
         else:
-            self.conv_0 = SpectralNorm(conv(in_channels=in_features, padding=pad,
-                                            out_channels=in_features,
-                                            kernel_size=kernel,
-                                            groups=in_features if SEPARABLE else 1))
+            self.scale = lambda x: x
+            if transpose:
+                conv_0_conv = getattr(torch.nn, f'ConvTranspose{dim}d')
+            else:
+                conv_0_conv = conv
+            self.conv_0 = SpectralNorm(conv_0_conv(in_channels=in_features, padding=pad,
+                                                   out_channels=in_features,
+                                                   kernel_size=kernel,
+                                                   groups=in_features if SEPARABLE
+                                                   else 1,
+                                                   stride=stride))
 
         if mod_2 and in_features == out_features:
             self.conv_1 = SpectralNorm(RevConv(input_tensor_list=input_tensor_list,

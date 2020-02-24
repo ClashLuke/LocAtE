@@ -32,7 +32,7 @@ class Block(nn.Module):
         if scales is None:
             scales = [None] * 4
         scaled = self.scale_layer(function_input)
-        out = self.res_module_i(scaled, scales[0:2])
+        out = self.res_module_i(scaled, scale=scales[0:2])
         if self.attention:
             out = self.res_module_s(out, scale=scales[2])
         return out

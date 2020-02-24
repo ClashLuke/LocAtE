@@ -149,8 +149,10 @@ def train(*args, **kwargs):
                 # TODO: Readd gradient penalty.
                 #  It had to be removed as backprop was called multipled times but the
                 #  other tensors weren't removed from the list (RevFunction/Backward)
-                true_err = hinge(dis(data).view(-1)).backward()
-                gen_err = hinge(-dis(generated).view(-1)).backward()
+                true_err = hinge(dis(data).view(-1)).mean()
+                true_err.backward()
+                gen_err = hinge(-dis(generated).view(-1)).mean()
+                gen_err.backward()
                 d_error = true_err + gen_err
                 if i % miniter == 0:
                     DIS_OPTIM.step()

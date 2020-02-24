@@ -9,6 +9,7 @@ from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
 from .scale import Scale
+from .spectral_norm import SpectralNorm
 from .utils import prod
 
 
@@ -35,7 +36,8 @@ class Block(nn.Module):
         if self.attention:
             self.res_module_s = ResModule(lambda x: x,
                                           Norm(out_features,
-                                               SelfAttention(out_features),
+                                               SpectralNorm(
+                                                   SelfAttention(out_features)),
                                                dim=dim))
 
     def forward(self, function_input, scales=None):

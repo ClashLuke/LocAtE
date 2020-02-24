@@ -20,9 +20,12 @@ class Block(nn.Module):
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
-        self.res_module_i = DeepResidualConv(out_features, out_features, False, 1, True,
-                                             dim, DEPTH, self.input_tensor_list, True,
-                                             True)
+        self.res_module_i = ResModule(lambda x: x,
+                                      DeepResidualConv(out_features, out_features,
+                                                       False, 1, True,
+                                                       dim, DEPTH,
+                                                       self.input_tensor_list, True,
+                                                       True))
         if self.attention:
             self.res_module_s = ResModule(lambda x: x,
                                           SpectralNorm(

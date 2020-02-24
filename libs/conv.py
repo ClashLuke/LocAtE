@@ -6,7 +6,7 @@ from .inplace_norm import Norm
 from .merge import ResModule
 from .scale import Scale
 from .spectral_norm import SpectralNorm
-from .utils import conv_pad_tuple, transpose_pad_tuple
+from .utils import conv_pad_tuple
 
 
 class RevConvFunction(torch.autograd.Function):
@@ -240,12 +240,6 @@ class DeepResidualConv(torch.nn.Module):
             min_features //= BOTTLENECK
         cnt = [0]
         self.layers = []
-
-        if transpose:
-            pad_tuple = transpose_pad_tuple
-        else:
-            pad_tuple = conv_pad_tuple
-
         self.input_tensor_list = []
 
         def add_conv(in_features, out_features, residual=True, normalize=False,

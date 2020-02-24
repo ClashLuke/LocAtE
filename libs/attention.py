@@ -24,8 +24,8 @@ class SelfAttentionFunction(RevConvFunction):
 
     @staticmethod
     def forward(ctx, block_input, *args):  # skipcq
-        ctx.save_for_backward(block_input, *args)
         with torch.no_grad():
+            ctx.save_for_backward(block_input, *args)
             block_input = SelfAttentionFunction.calc(block_input, *args)
         block_input.requires_grad_(True)
         return block_input

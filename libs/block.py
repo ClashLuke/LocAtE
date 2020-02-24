@@ -14,9 +14,11 @@ from .utils import prod
 
 class Block(nn.Module):
     def __init__(self, in_size, in_features, out_features, stride, transpose,
-                 block_number, cat_out=True, dim=2):
+                 block_number, dim=2):
         super().__init__()
         input_tensor_list = []
+        self.attention = (in_size >= MIN_ATTENTION_SIZE and
+                          block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
         self.res_module_i = ResModule(lambda x: x,
                                       Norm(in_features,
@@ -24,28 +26,27 @@ class Block(nn.Module):
                                                             out_features, transpose,
                                                             stride, True,
                                                             dim, DEPTH,
-                                                            input_tensor_list),
+                                                            input_tensor_list,
+                                                            not self.attention
+                                                            ),
                                            dim=dim),
                                       m=3)
-        if (in_size >= MIN_ATTENTION_SIZE and
-                block_number % ATTENTION_EVERY_NTH_LAYER == 0):
+        if self.attention:
             self.res_module_f = ResModule(lambda x: x,
                                           Norm(out_features,
                                                feature_attention(in_size,
                                                                  out_features,
                                                                  dim,
-                                                                 input_tensor_list),
+                                                                 input_tensor_list,
+                                                                 False),
                                                dim=dim))
             self.res_module_s = ResModule(lambda x: x,
                                           Norm(out_features,
                                                SelfAttention(out_features,
                                                              dim,
-                                                             input_tensor_list),
+                                                             input_tensor_list,
+                                                             True),
                                                dim=dim))
-            self.attention = True
-        else:
-            self.attention = False
-        self.cat_out = cat_out
 
     def forward(self, function_input, scales=None):
         if scales is None:

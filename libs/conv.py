@@ -13,6 +13,7 @@ class RevConvFunction(torch.autograd.Function):
     @staticmethod
     def conv(block_input, conv, padding, groups, *args):
         weight, bias, scale = args
+        block_input = nonlinear_function(block_input)
         block_input = torch.nn.functional.batch_norm(block_input,
                                                      running_var=torch.ones(
                                                              block_input.size(
@@ -22,7 +23,6 @@ class RevConvFunction(torch.autograd.Function):
                                                                      1)).to(DEVICE))
         if scale is not None:
             block_input *= scale
-        block_input = nonlinear_function(block_input)
         block_input = conv(block_input, weight, bias, padding=padding, groups=groups)
         return block_input
 

@@ -2,39 +2,14 @@ import torch
 from torch import nn
 
 from .attention import SelfAttention, feature_attention
-from .config import (ATTENTION_EVERY_NTH_LAYER, INPUT_VECTOR_Z,
+from .config import (ATTENTION_EVERY_NTH_LAYER, DEPTH, INPUT_VECTOR_Z,
                      MIN_ATTENTION_SIZE)
-from .conv import InceptionBlock
+from .conv import DeepResidualConv
 from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
 from .scale import Scale
 from .utils import prod
-
-
-class TanhMul(torch.autograd.Function):
-    @staticmethod
-    # skipcq
-    def forward(ctx, x, y):
-        ctx.save_for_backward(x, y)
-        t = x.tanh()
-        t.add_(1)
-        t.mul_(y)
-        return t
-
-    @staticmethod
-    # skipcq
-    def backward(ctx, grad_output):
-        x, y = ctx.saved_tensors  # skipcq
-        dy = x.tanh()  # skipcq
-        dy.add_(1)
-        dx = x.cosh()  # skipcq
-        dx.pow_(2)
-        dx.reciprocal_()
-        dx.mul_(y)
-        dx.mul_(grad_output)
-        dy.mul_(grad_output)
-        return dx, dy
 
 
 class Block(nn.Module):
@@ -44,10 +19,12 @@ class Block(nn.Module):
         self.scale_layer = Scale(in_features, out_features, stride, transpose, dim=dim)
         self.res_module_i = ResModule(lambda x: x,
                                       Norm(in_features,
-                                           InceptionBlock(in_features, out_features,
-                                                          stride, transpose, dim=dim),
+                                           DeepResidualConv(in_features,
+                                                            out_features, transpose,
+                                                            stride,
+                                                            depth=DEPTH, dim=dim),
                                            dim=dim),
-                                      m=1)
+                                      m=3)
         if (in_size >= MIN_ATTENTION_SIZE and
                 block_number % ATTENTION_EVERY_NTH_LAYER == 0):
             self.res_module_f = ResModule(lambda x: x,
@@ -72,8 +49,6 @@ class Block(nn.Module):
         if self.attention:
             out = self.res_module_f(out, scale=scales[1])
             out = self.res_module_s(out, scale=scales[2])
-        if scales[-1] is not None:
-            out = TanhMul.apply(scales[-1].expand_as(out), out)
         return out
 
 
@@ -107,8 +82,8 @@ class BlockBlock(nn.Module):
             prev_out = 0
             for i in range(block_count):
                 scales = 2 * blocks[i].attention
-                depths.append(2 + scales)
-                sums.append(sums[-1] + scales + 2)
+                depths.append(1 + scales)
+                sums.append(sums[-1] + scales + 1)
                 inp, out = feature_tuple(i)
                 if prev_out and prev_out != inp:
                     group_inp = prev_out
@@ -116,10 +91,14 @@ class BlockBlock(nn.Module):
                     group_inp = inp
                 mul_blocks.append(
                         LinearModule(group_inp + INPUT_VECTOR_Z * bool(i), inp))
-                mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z, out))
-                attention_scales = [LinearModule(out + INPUT_VECTOR_Z, out) for _ in
-                                    range(scales)]
-                mul_blocks.extend(attention_scales)
+                if scales:
+                    mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z, out))
+                    attention_scales = [LinearModule(out + INPUT_VECTOR_Z, out) for _ in
+                                        range(1, scales)]
+                    mul_blocks.extend(attention_scales)
+                    prev_out = out
+                else:
+                    prev_out = inp
 
             self.mul_blocks = mul_blocks
 

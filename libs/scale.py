@@ -19,11 +19,19 @@ class FeaturePooling(nn.Module):
 def Scale(in_features, out_features, stride, transpose, dim=2):
     reslayers = []
     if in_features > out_features:
-        reslayers.append(FeaturePooling(out_features))
+        if in_features % out_features == 0:
+            reslayers.append(FeaturePooling(out_features))
+        else:
+            reslayers.append(SpectralNorm(getattr(nn, f'Conv{dim}d')(in_features,
+                                                                     out_features, 1)))
+
     elif out_features > in_features:
-        reslayers.append(CatModule(lambda x: x, SpectralNorm(
-                getattr(nn, f'Conv{dim}d')(in_features, out_features - in_features,
-                                           1))))
+        reslayers.append(CatModule(lambda x: x,
+                                   SpectralNorm(getattr(nn,
+                                                        f'Conv{dim}d')(in_features,
+                                                                       out_features -
+                                                                       in_features,
+                                                                       1))))
     if stride > 1:
         if transpose:
             reslayers.append(nn.Upsample(mode='bilinear', scale_factor=stride,

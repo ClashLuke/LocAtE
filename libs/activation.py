@@ -36,23 +36,16 @@ class RootTanh(torch.autograd.Function):
         return sech_2_x
 
 
-class Swish(nn.Module):
-    def __init__(self):
-        super(Swish, self).__init__()
-        self.slope = torch.nn.Parameter(torch.ones(1))
-
-    def forward(self, function_input):
-        return function_input.mul(
-                torch.sigmoid(torch.mul(function_input, self.slope.data)))
+nonlinear_function = RootTanh.apply  # skipcq
 
 
 class RootTanhModule(nn.Module):
     def __init__(self):
         super().__init__()
-        self.activation_function = RootTanh.apply
 
-    def forward(self, function_input):
-        return self.activation_function(function_input)
+    @staticmethod
+    def forward(function_input):
+        return nonlinear_function(function_input)
 
 
 NonLinear = RootTanhModule

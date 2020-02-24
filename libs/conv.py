@@ -42,8 +42,9 @@ class RevConvFunction(torch.autograd.Function):
             y1 = RevConvFunction.conv(y0, conv, padding, groups, *args1) + x1
             cat = torch.cat([y0, y1], dim=1)
             if append_output:
-                input_tensor_list.append(cat)
-            return cat
+                input_tensor_list.append((y0, y1))
+        cat.requires_grad_(True)
+        return cat
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -53,11 +54,7 @@ class RevConvFunction(torch.autograd.Function):
         padding = ctx.padding
         groups = ctx.groups
         with torch.no_grad():
-            elem = ctx.input_tensor_list.pop(0)
-            if isinstance(elem, torch.Tensor):
-                y0, y1 = elem.chunk(2, 1)
-            else:  # is tuple
-                y0, y1 = elem
+            y0, y1 = ctx.input_tensor_list.pop(0)
             x1 = y1 - RevConvFunction.conv(y0, conv, padding, groups, *args1)
             x0 = y0 - RevConvFunction.conv(x1, conv, padding, groups, *args0)
             x1 = x1.data
@@ -147,7 +144,7 @@ class RevConv(torch.nn.Module):
         return f'features={self.features}, ' \
                f'kernel_size={self.kernel_size}, padding={self.padding}, ' \
                f'groups={self.groups}, dim={self.dim}, ' \
-               f'append_output={self.append_output}'
+               f'append_output={self.append_output}, clear_list={self.clear_list}'
 
 
 class BottleneckRevConv(torch.nn.Module):
@@ -286,16 +283,19 @@ class DeepResidualConv(torch.nn.Module):
             cnt[0] += 1
             self.layers.append(layer)
 
-        add_conv(in_features, out_features, False, False,
-                 transpose, stride, input_tensor_list=[],
-                 append_output=True, clear_list=True)
-        i = 0
+        if in_features != out_features:
+            add_conv(in_features, out_features, False, False,
+                     transpose, stride, input_tensor_list=[],
+                     append_output=True, clear_list=True)
+        else:
+            depth += 1
+        i = -1
         for i in range(depth - 2):
             add_conv(out_features, out_features, normalize=bool(i),
                      clear_list=clear_list and i == 0)
         if (depth - 1) > 0:
             add_conv(out_features, out_features, normalize=bool(i),
-                     append_output=append_output, clear_list=clear_list and not i)
+                     append_output=append_output, clear_list=clear_list and i == -1)
 
     def forward(self, function_input: torch.FloatTensor, ):
         for layer in self.layers:

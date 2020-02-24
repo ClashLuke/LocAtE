@@ -84,7 +84,7 @@ class RevConvFunction(torch.autograd.Function):
                                                     (x0, x1, *args0),
                                                     grad_y1 + y0g1, retain_graph=True)
         ctx.input_tensor_list.append((x0, x1))
-        return (torch.cat([y0g1 + x0g0, x1g1 + x1g0], dim=1), *[None] * 5,
+        return (torch.cat([y0g1 + x0g0, x1g1 + x1g0], dim=1), *[None] * 6,
                 *conv0_grad, *conv1_grad)
 
 
@@ -275,13 +275,12 @@ class DeepResidualConv(torch.nn.Module):
             cnt[0] += 1
             self.layers.append(layer)
 
-        final_layer = (depth - 1) > 0
         add_conv(in_features, out_features, False, False,
                  transpose, stride, input_tensor_list=[],
-                 append_output=append_output and not final_layer)
+                 append_output=True)
         for i in range(depth - 2):
             add_conv(out_features, out_features, normalize=bool(i))
-        if final_layer:
+        if (depth - 1) > 0:
             add_conv(out_features, out_features, normalize=bool(i),
                      append_output=append_output)
 

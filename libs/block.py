@@ -21,7 +21,7 @@ class BigNetwork(nn.Module):
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         if self.attention:
-            self.att_module = SelfAttention(out_features, dim)
+            self.att_module = ResModule(lambda x: x, SelfAttention(out_features, dim))
 
     def forward(self, function_input, scales=None):
         if scales is not None:

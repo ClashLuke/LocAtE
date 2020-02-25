@@ -36,7 +36,7 @@ class BigNetwork(nn.Module):
 
 def Block(in_size, in_features, out_features, stride, transpose, block_number, dim=2):
     return ResModule(DeepResidualConv(in_features, out_features, transpose, stride,
-                                      depth=1, dim=dim),
+                                      depth=1, dim=dim, anti_alias=False),
                      BigNetwork(in_size, in_features, out_features, stride, transpose,
                                 block_number, dim))
 

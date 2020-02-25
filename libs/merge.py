@@ -1,21 +1,6 @@
 import torch
 
 
-class CatModule(torch.nn.Module):
-    def __init__(self, residual_module, layer_module):
-        super().__init__()
-        self.residual_module = residual_module
-        self.layer_module = layer_module
-
-    def forward(self, function_input, layer_input=None, scale=None):
-        args = [function_input] if layer_input is None else [layer_input]
-        if scale is not None:
-            args.append(scale)
-        res, layer_out = self.residual_module(function_input), self.layer_module(*args)
-        output = torch.cat([res, layer_out], dim=1)
-        return output
-
-
 class ResidualFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, function_input, attention, gamma):

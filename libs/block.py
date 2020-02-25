@@ -14,27 +14,23 @@ class BigNetwork(nn.Module):
     def __init__(self, in_size, in_features, out_features, stride, transpose,
                  block_number, dim=2):
         super().__init__()
-        self.side_path = DeepResidualConv(in_features, out_features, transpose, stride,
-                                          depth=1, dim=dim)
-        self.res_module_i = DeepResidualConv(in_features,
-                                             out_features, transpose,
-                                             stride,
-                                             depth=DEPTH, dim=dim)
-        if (in_size >= MIN_ATTENTION_SIZE and
-                block_number % ATTENTION_EVERY_NTH_LAYER == 0):
-            self.res_module_s = SelfAttention(out_features, dim)
-            self.attention = True
-        else:
-            self.attention = False
+        self.conv_module = DeepResidualConv(in_features,
+                                            out_features, transpose,
+                                            stride,
+                                            depth=DEPTH, dim=dim)
+        self.attention = (in_size >= MIN_ATTENTION_SIZE and
+                          block_number % ATTENTION_EVERY_NTH_LAYER == 0)
+        if self.attention:
+            self.att_module = SelfAttention(out_features, dim)
 
     def forward(self, function_input, scales=None):
         if scales is not None:
             function_input = function_input * scales[0]
-        out = self.res_module_i(function_input)
+        out = self.conv_module(function_input)
         if self.attention:
             if scales is not None:
                 out = out * scales[1]
-            out = self.res_module_s(out)
+            out = self.att_module(out)
         return out
 
 

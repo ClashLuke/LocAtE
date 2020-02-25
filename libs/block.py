@@ -5,6 +5,7 @@ from .attention import SelfAttention
 from .config import (ATTENTION_EVERY_NTH_LAYER, DEPTH, INPUT_VECTOR_Z,
                      MIN_ATTENTION_SIZE)
 from .conv import DeepResidualConv
+from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
 from .utils import prod
@@ -21,24 +22,27 @@ class BigNetwork(nn.Module):
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         if self.attention:
-            self.att_module = ResModule(lambda x: x, SelfAttention(out_features, dim))
+            self.att_module = ResModule(lambda x: x, Norm(out_features,
+                                                          SelfAttention(out_features,
+                                                                        dim), dim))
 
     def forward(self, function_input, scales=None):
-        if scales is not None:
-            function_input = function_input * scales[0]
-        out = self.conv_module(function_input)
+        if scales is None:
+            scales = [None, None]
+        out = self.conv_module(function_input, scale=scales[0])
         if self.attention:
             if scales is not None:
-                out = out * scales[1]
-            out = self.att_module(out)
+                out = self.att_module(out, scale=scales[1])
         return out
 
 
 def Block(in_size, in_features, out_features, stride, transpose, block_number, dim=2):
-    return ResModule(DeepResidualConv(in_features, out_features, transpose, stride,
-                                      depth=1, dim=dim, anti_alias=False),
-                     BigNetwork(in_size, in_features, out_features, stride, transpose,
-                                block_number, dim))
+    return ResModule(
+            Norm(in_features,
+                 DeepResidualConv(in_features, out_features, transpose, stride,
+                                  depth=1, dim=dim, anti_alias=False), dim),
+            BigNetwork(in_size, in_features, out_features, stride, transpose,
+                       block_number, dim))
 
 
 class BlockBlock(nn.Module):
@@ -71,8 +75,8 @@ class BlockBlock(nn.Module):
             prev_out = 0
             for i in range(block_count):
                 scales = int(blocks[i].layer_module.attention)
-                depths.append(1 + scales)
-                sums.append(sums[-1] + scales + 1)
+                depths.append(2 + scales)
+                sums.append(sums[-1] + scales + 2)
                 inp, out = feature_tuple(i)
                 if prev_out and prev_out != inp:
                     group_inp = prev_out
@@ -80,14 +84,12 @@ class BlockBlock(nn.Module):
                     group_inp = inp
                 mul_blocks.append(
                         LinearModule(group_inp + INPUT_VECTOR_Z * bool(i), inp))
+                mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z, out))
+
                 if scales:
-                    mul_blocks.append(LinearModule(inp + INPUT_VECTOR_Z, out))
                     attention_scales = [LinearModule(out + INPUT_VECTOR_Z, out) for _ in
-                                        range(1, scales)]
+                                        range(scales)]
                     mul_blocks.extend(attention_scales)
-                    prev_out = out
-                else:
-                    prev_out = inp
 
             self.mul_blocks = mul_blocks
 

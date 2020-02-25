@@ -6,7 +6,6 @@ from .config import (DEVICE, DIS_FEATURES, D_STRIDE, END_LAYER, FACTOR, GEN_FEAT
                      G_STRIDE, IMAGE_SIZE, INPUT_VECTOR_Z, LAYERS, START_LAYER)
 from .conv import DeepResidualConv
 from .merge import ResModule
-from .scale import Scale
 from .utils import get_feature_list
 
 
@@ -77,9 +76,7 @@ class Discriminator(nn.Module):
         d_features = DFeatures(0, len(strides))
         feature_list = get_feature_list(strides, False, d_features)
         feature_list.append(feature_list[-1])
-        cat_module = ResModule(Scale(3, d_features(0), 2, False),
-                               DeepResidualConv(3, d_features(0), False, 2, False, 2,
-                                                1))
+        cat_module = DeepResidualConv(3, d_features(0), False, 2, False, 2, 1)
         block_block = BlockBlock(len(strides), IMAGE_SIZE // 2, feature_list, strides,
                                  False)
         conv = [ResModule(lambda x: x,

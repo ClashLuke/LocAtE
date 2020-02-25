@@ -9,7 +9,7 @@ from .utils import conv_pad_tuple, transpose_pad_tuple
 
 
 class ActivatedBaseConv(torch.nn.Module):
-    def __init__(self, in_features, out_features, conv, kernel=5, stride=1, pad=2):
+    def __init__(self, in_features, out_features, conv, kernel=3, stride=1, pad=1):
         super().__init__()
         self.conv_0 = SpectralNorm(conv(in_channels=in_features, kernel_size=kernel,
                                         stride=stride, padding=pad, bias=False,
@@ -33,7 +33,7 @@ class DeepResidualConv(torch.nn.Module):
                                   out_features) // min_features < BOTTLENECK:
             min_features //= BOTTLENECK
         self.final_layer = None
-        kernel = stride * 2 + int(not transpose)
+        kernel = 3 + int(transpose)
         cnt = [0]
         self.layers = []
 

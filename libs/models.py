@@ -1,10 +1,11 @@
 import torch
 from torch import nn
 
-from .block import BlockBlock, ResModule
+from .block import BlockBlock
 from .config import (DEVICE, DIS_FEATURES, D_STRIDE, END_LAYER, FACTOR, GEN_FEATURES,
                      G_STRIDE, IMAGE_SIZE, INPUT_VECTOR_Z, LAYERS, START_LAYER)
 from .conv import DeepResidualConv
+from .merge import ResModule
 from .scale import Scale
 from .utils import get_feature_list
 

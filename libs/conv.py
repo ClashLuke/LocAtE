@@ -10,14 +10,15 @@ from .utils import conv_pad_tuple, transpose_pad_tuple
 
 class ActivatedBaseConv(torch.nn.Module):
     def __init__(self, in_features, out_features, conv, kernel=3, stride=1, pad=1,
-                 dim=2, anti_alias=True):
+                 dim=2, anti_alias=True, normalize=True):
         super().__init__()
-        self.conv_0 = Norm(in_features, SpectralNorm(
-                conv(in_channels=in_features, kernel_size=kernel,
-                     stride=stride, padding=pad, bias=False,
-                     out_channels=in_features,
-                     groups=in_features if SEPARABLE else 1)), dim)
         self.anti_alias = stride > 1 and ANTI_ALIAS and anti_alias
+        self.conv_0 = SpectralNorm(conv(in_channels=in_features, kernel_size=kernel,
+                                        stride=stride, padding=pad, bias=False,
+                                        out_channels=in_features,
+                                        groups=in_features if SEPARABLE else 1))
+        if normalize:
+            self.conv_0 = Norm(in_features, self.conv_0, dim)
         if self.anti_alias:
             self.aa_layer = getattr(torch.nn, f'AvgPool{dim}d')(kernel_size=3,
                                                                 stride=1, padding=1)
@@ -25,9 +26,16 @@ class ActivatedBaseConv(torch.nn.Module):
                            SpectralNorm(conv(kernel_size=1, stride=1, padding=0,
                                              out_channels=out_features, bias=False,
                                              in_channels=in_features)), dim)
+        self.normalize = normalize
 
     def forward(self, function_input, scale=None):
-        out = self.conv_0(nonlinear_function(function_input), scale)
+        out = nonlinear_function(function_input)
+        if self.normalize:
+            out = self.conv_0(out, scale)
+        elif scale is not None:
+            out = self.conv_0(out * scale)
+        else:
+            out = self.conv_0(out)
         if self.anti_alias:
             out = self.aa_layer(out)
         return self.conv_1(nonlinear_function(out), scale)
@@ -35,7 +43,7 @@ class ActivatedBaseConv(torch.nn.Module):
 
 class DeepResidualConv(torch.nn.Module):
     def __init__(self, in_features, out_features, transpose, stride,
-                 use_bottleneck=True, dim=2, depth=1, anti_alias=True):
+                 use_bottleneck=True, dim=2, depth=1, anti_alias=True, normalize=True):
         super().__init__()
         min_features = min(in_features, out_features)
         if use_bottleneck and max(in_features,
@@ -58,7 +66,8 @@ class DeepResidualConv(torch.nn.Module):
             conv = getattr(torch.nn,
                            f'ConvTranspose{dim}d') if transpose else default_conv
             layer = ActivatedBaseConv(in_features, out_features, conv, stride=stride,
-                                      **kwargs, dim=dim, anti_alias=anti_alias)
+                                      **kwargs, dim=dim, anti_alias=anti_alias,
+                                      normalize=normalize)
             if residual and in_features == out_features:
                 layer = ResModule(lambda x: x, layer, m=1)
             setattr(self, f'conv_{cnt[0]}', layer)

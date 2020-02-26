@@ -1,3 +1,4 @@
+
 import math
 
 import torch
@@ -63,9 +64,9 @@ BOTTLENECK = 1
 MIN_ATTENTION_SIZE = 8000
 ATTENTION_EVERY_NTH_LAYER = 2
 INPUT_VECTOR_Z = IMAGE_SIZE
-DITERS = 1
+DITERS = 2
 MAIN_N = 2 ** 10
-DEPTH = 1  # There is no visible advantage (after 15 epochs) of bigger depth
+DEPTH = 3  # There is no visible advantage (after 15 epochs) of bigger depth
 
 GLR = 5e-4
 DLR = 2e-3

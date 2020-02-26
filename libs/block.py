@@ -8,6 +8,7 @@ from .conv import DeepResidualConv
 from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
+from .scale import Scale
 from .utils import prod
 
 
@@ -37,12 +38,9 @@ class BigNetwork(nn.Module):
 
 
 def Block(in_size, in_features, out_features, stride, transpose, block_number, dim=2):
-    return ResModule(
-            Norm(in_features,
-                 DeepResidualConv(in_features, out_features, transpose, stride,
-                                  depth=1, dim=dim, anti_alias=False), dim),
-            BigNetwork(in_size, in_features, out_features, stride, transpose,
-                       block_number, dim))
+    return ResModule(Scale(in_features, out_features, stride, transpose),
+                     BigNetwork(in_size, in_features, out_features, stride, transpose,
+                                block_number, dim))
 
 
 class BlockBlock(nn.Module):

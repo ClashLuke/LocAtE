@@ -50,7 +50,7 @@ class Generator(nn.Module):
             self.input_block = lambda x: x
             out_f = in_f
         feature_list.insert(0, out_f)
-        self.conv_block = BlockBlock(len(strides), 2, feature_list, strides, True, True)
+        self.conv_block = BlockBlock(len(strides), 1, feature_list, strides, True, True)
         self.out_conv = DeepResidualConv(self.conv_block.out_features, 3, False,
                                          1, False, 2, 1)
 
@@ -78,7 +78,7 @@ class Discriminator(nn.Module):
         feature_list.append(feature_list[-1])
         cat_module = DeepResidualConv(3, d_features(0), False, 2, False, 2, 1,
                                       normalize=False)
-        block_block = BlockBlock(len(strides), IMAGE_SIZE // 2, feature_list, strides,
+        block_block = BlockBlock(len(strides), IMAGE_SIZE, feature_list, strides,
                                  False)
         conv = [ResModule(lambda x: x,
                           DeepResidualConv(block_block.out_features,

@@ -1,10 +1,10 @@
 import torch
 from torch import nn
 
+from .Kernelless.module import Kernelless
 from .attention import SelfAttention
-from .config import (ATTENTION_EVERY_NTH_LAYER, DEPTH, INPUT_VECTOR_Z,
+from .config import (ATTENTION_EVERY_NTH_LAYER, INPUT_VECTOR_Z,
                      MIN_ATTENTION_SIZE)
-from .conv import DeepResidualConv
 from .inplace_norm import Norm
 from .linear import LinearModule
 from .merge import ResModule
@@ -16,10 +16,11 @@ class BigNetwork(nn.Module):
     def __init__(self, in_size, in_features, out_features, stride, transpose,
                  block_number, dim=2):
         super().__init__()
-        self.conv_module = DeepResidualConv(in_features,
-                                            out_features, transpose,
-                                            stride,
-                                            depth=DEPTH, dim=dim)
+        print("T", in_features, out_features, in_size)
+        self.conv_module = Norm(in_features,
+                                Kernelless(in_features, out_features, in_size, stride,
+                                           dim, transpose),
+                                dim)
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
         if self.attention:

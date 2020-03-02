@@ -1,0 +1,6 @@
+[submodule "Kernelless"]
+	path = Kernelless
+	url = https://www.github.com/ClashLuke/Kernelless
+[submodule "libs/Kernelless"]
+	path = libs/Kernelless
+	url = https://www.github.com/ClashLuke/Kernelless

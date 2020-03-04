@@ -17,9 +17,10 @@ class BigNetwork(nn.Module):
                  block_number, dim=2):
         super().__init__()
         print("T", in_features, out_features, in_size)
-        self.conv_module = Norm(in_features,
-                                Kernelless(in_features, out_features, in_size, stride,
-                                           dim, transpose),
+        conv = torch.nn.ConvTranspose2d if transpose else torch.nn.Conv2d
+        self.conv_module = Norm(in_features, conv(in_features, out_features, 5- transpose, stride=stride, padding=2-transpose),
+#                                Kernelless(in_features, out_features, in_size, stride,
+#                                           dim, transpose),
                                 dim)
         self.attention = (in_size >= MIN_ATTENTION_SIZE and
                           block_number % ATTENTION_EVERY_NTH_LAYER == 0)
@@ -28,18 +29,18 @@ class BigNetwork(nn.Module):
                                                           SelfAttention(out_features,
                                                                         dim), dim))
 
-    def forward(self, function_input, scales=None):
-        if scales is None:
-            scales = [None, None]
-        out = self.conv_module(function_input, scale=scales[0])
+    def forward(self, function_input, scale=None):
+        if scale is None:
+            scale = [None, None]
+        out = self.conv_module(function_input, scale=scale[0])
         if self.attention:
-            if scales is not None:
-                out = self.att_module(out, scale=scales[1])
+            if scale is not None:
+                out = self.att_module(out, scale=scale[1])
         return out
 
 
 def Block(in_size, in_features, out_features, stride, transpose, block_number, dim=2):
-    return ResModule(Scale(in_features, out_features, stride, transpose),
+    return ( #ResModule(Scale(in_features, out_features, stride, transpose),
                      BigNetwork(in_size, in_features, out_features, stride, transpose,
                                 block_number, dim))
 
@@ -73,7 +74,10 @@ class BlockBlock(nn.Module):
             mul_blocks = []
             prev_out = 0
             for i in range(block_count):
-                scales = int(blocks[i].layer_module.attention)
+                try:
+                    scales = int(blocks[i].layer_module.attention)
+                except:
+                    scales = int(blocks[i].attention)
                 depths.append(2 + scales)
                 sums.append(sums[-1] + scales + 2)
                 inp, out = feature_tuple(i)

@@ -50,7 +50,8 @@ class DeepResidualConv(torch.nn.Module):
                                   out_features) // min_features < BOTTLENECK:
             min_features //= BOTTLENECK
         self.final_layer = None
-        kernel = (stride + 1) // 2 * 2 + 1 + int(transpose)
+#        kernel = (stride + 1) // 2 * 2 + 1 + int(transpose)
+        kernel = 4 + int(not transpose)
         cnt = [0]
         self.layers = []
 
@@ -61,7 +62,7 @@ class DeepResidualConv(torch.nn.Module):
 
         default_conv = getattr(torch.nn, f'Conv{dim}d')
 
-        def add_conv(in_features, out_features, residual=True, normalize=False,
+        def add_conv(in_features, out_features, residual=True,
                      transpose=False, stride=1, **kwargs):
             conv = getattr(torch.nn,
                            f'ConvTranspose{dim}d') if transpose else default_conv
@@ -74,13 +75,12 @@ class DeepResidualConv(torch.nn.Module):
             cnt[0] += 1
             self.layers.append(layer)
 
-        add_conv(in_features, min_features if depth > 1 else out_features, False, False,
+        add_conv(in_features, min_features if depth > 1 else out_features, False,
                  transpose, stride, kernel=kernel, pad=pad_tuple(kernel, stride))
         for i in range(depth - 2):
-            add_conv(min_features, min_features, default_conv, normalize=bool(i))
+            add_conv(min_features, min_features, default_conv)
         if depth > 1:
-            add_conv(min_features, out_features, default_conv,
-                     normalize=bool(depth - 2))
+            add_conv(min_features, out_features, default_conv)
 
     def forward(self, function_input: torch.FloatTensor, scale=None):
         for layer in self.layers:

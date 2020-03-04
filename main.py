@@ -149,11 +149,11 @@ def train(*args, **kwargs):
                 d_true = dis(data).view(-1)
                 d_gen = -dis(generated).view(-1)
                 if D_HINGE:
-                    d_error = hinge(d_true) + hinge(d_gen)
+                    d_error = hinge(d_true).mean() + hinge(d_gen).mean()
                 else:
-                    d_error = d_true + d_gen
-                d_error = d_error.mean()
-                (d_error + penalty(d_true, aug_data, dis, DEVICE)).backward()
+                    d_error = d_true.mean() + d_gen.mean()
+                d_error = d_error + penalty(d_true, aug_data, dis, DEVICE)
+                d_error.backward()
 
                 if i % miniter == 0:
                     DIS_OPTIM.step()
@@ -171,43 +171,44 @@ def train(*args, **kwargs):
                         GEN_OPTIM.step()
                         dis.requires_grad_(True)
 
-                    if i % print_every_nth_batch == 0:
-                        i = i
-                        cdiff_i = i / (time.time() - start_time)
-                        try:
-                            eta = str(timedelta(seconds=int((batches - i) / cdiff_i)))
-                        except ZeroDivisionError:
-                            eta = "Unknown"
-                        try:
-                            drror = d_error.item() / 2
-                            grror = g_error.item()
-                        except UnboundLocalError:
-                            continue
-                        print(
-                                f'\r[{epoch + 1}][{sub + 1}/{subepochs}]['
-                                f'{i:{batch_len}d}/{batches}] | Rate: '
-                                f'{cdiff_i * batch:.2f} Img/s - {cdiff_i:.2f} Upd/s | '
-                                + f'D:{drror:9.4f} - G:{grror:9.4f}| ETA: {eta}',
-                                end='', flush=True)
-                        dhist.append(drror)
-                        ghist.append(grror)
-                    if i % image_intervall == 0:
-                        gen.eval()
-                        if USE_GPU:
-                            torch.cuda.empty_cache()
-                        with torch.no_grad():
-                            fake = gen(fnoise).detach().cpu()
-                        if USE_GPU:
-                            torch.cuda.empty_cache()
-                        gen.train()
-                        plt.imsave(
-                                f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-'
-                                f'{i:0{batch_len}d}.png',
-                                arr=np.transpose(vutils.make_grid(fake, padding=8,
-                                                                  normalize=True
-                                                                  ).numpy(),
-                                                 (1, 2, 0)))
-            print('')
+#                    if i % print_every_nth_batch == 0:
+#                        i = i
+#                        cdiff_i = i / (time.time() - start_time)
+#                        try:
+#                            eta = str(timedelta(seconds=int((batches - i) / cdiff_i)))
+#                        except ZeroDivisionError:
+#                            eta = "Unknown"
+#                        try:
+#                            drror = d_error.item() / 2
+#                            grror = g_error.item()
+#                        except UnboundLocalError:
+#                            continue
+#                        print(
+#                               f'\r[{epoch + 1}][{sub + 1}/{subepochs}]['
+#                                f'{i:{batch_len}d}/{batches}] | Rate: '
+#                                f'{cdiff_i * batch:.2f} Img/s - {cdiff_i:.2f} Upd/s | '
+#                                + f'D:{drror:9.4f} - G:{grror:9.4f}| ETA: {eta}',
+#                                end='', flush=True)
+#                        dhist.append(drror)
+#                        ghist.append(grror)
+#                    if i % image_intervall == 0:
+#                        gen.eval()
+#                        if USE_GPU:
+#                            torch.cuda.empty_cache()
+#                        with torch.no_grad():
+#                            fake = gen(fnoise).detach().cpu()
+#                        if USE_GPU:
+#                            torch.cuda.empty_cache()
+#                        gen.train()
+#                        plt.imsave(
+#                                f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-'
+#                                f'{i:0{batch_len}d}.png',
+#                                arr=np.transpose(vutils.make_grid(fake, padding=8,
+#                                                                  normalize=True
+#                                                                  ).numpy(),
+#                                                 (1, 2, 0)))
+#            print('')
+            print(d_error.item(),g_error.item())
             if USE_GPU:
                 torch.cuda.empty_cache()
             gen.eval()
@@ -218,22 +219,22 @@ def train(*args, **kwargs):
             if USE_GPU:
                 torch.cuda.empty_cache()
             gen.train()
-            plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}/{sub + 1:0{sub_len}d}-END.png',
+            plt.imsave(f'{OUTPUT_FOLDER}/{epoch + 1}-{sub + 1:0{sub_len}d}-END.png',
                        arr=np.transpose(
                                vutils.make_grid(fake, padding=8,
                                                 normalize=True).numpy(),
                                (1, 2, 0)))
-        div = ((MEAN_WINDOW ** 2 - MEAN_WINDOW) / 2)
-        ma_dhist = [sum(dhist[i + j - 1] * j for j in range(1, MEAN_WINDOW + 1)) / div
-                    for i in
-                    range(len(dhist) - MEAN_WINDOW)]
-        ma_ghist = [sum(ghist[i + j - 1] * j for j in range(1, MEAN_WINDOW + 1)) / div
-                    for i in
-                    range(len(ghist) - MEAN_WINDOW)]
-        plot_hist(ma_dhist, f'error/{epoch + 1}-d.svg')
-        plot_hist(ma_ghist, f'error/{epoch + 1}-g.svg')
-        torch.save(GEN.state_dict(), 'netG.torch')
-        torch.save(DIS.state_dict(), 'netD.torch')
+ #       div = ((MEAN_WINDOW ** 2 - MEAN_WINDOW) / 2)
+ #       ma_dhist = [sum(dhist[i + j - 1] * j for j in range(1, MEAN_WINDOW + 1)) / div
+ #                   for i in
+ #                   range(len(dhist) - MEAN_WINDOW)]
+ #       ma_ghist = [sum(ghist[i + j - 1] * j for j in range(1, MEAN_WINDOW + 1)) / div
+ #                   for i in
+ #                   range(len(ghist) - MEAN_WINDOW)]
+ #       plot_hist(ma_dhist, f'error/{epoch + 1}-d.svg')
+ #       plot_hist(ma_ghist, f'error/{epoch + 1}-g.svg')
+ #       torch.save(GEN.state_dict(), 'netG.torch')
+ #       torch.save(DIS.state_dict(), 'netD.torch')
 
 
 train()

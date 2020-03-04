@@ -7,7 +7,8 @@ from .config import (DEVICE, DIS_FEATURES, D_STRIDE, END_LAYER, FACTOR, GEN_FEAT
 from .conv import DeepResidualConv
 from .merge import ResModule
 from .utils import get_feature_list
-
+from .spectral_norm import SpectralNorm
+from .inplace_norm import Norm
 
 def quadnorm(number: int):
     return number // 4 * 4
@@ -50,9 +51,9 @@ class Generator(nn.Module):
             self.input_block = lambda x: x
             out_f = in_f
         feature_list.insert(0, out_f)
+        feature_list[-1] = 3
         self.conv_block = BlockBlock(len(strides), 1, feature_list, strides, True, True)
-        self.out_conv = DeepResidualConv(self.conv_block.out_features, 3, False,
-                                         1, False, 2, 1)
+#        self.out_conv = Norm(self.conv_block.out_features, SpectralNorm(nn.Conv2d(self.conv_block.out_features, 3, 5, padding=2)), 2)
 
         self.g_in = feature_list[0]
 
@@ -62,7 +63,7 @@ class Generator(nn.Module):
         expanded_noise = self.noise.expand(function_input.size(0), -1, -1, -1)
         conv_out = self.input_block(expanded_noise)
         conv_out = self.conv_block(conv_out, function_input)
-        conv_out = self.out_conv(conv_out)
+ #       conv_out = self.out_conv(conv_out)
         return conv_out.tanh()
 
 
@@ -75,9 +76,11 @@ class Discriminator(nn.Module):
                 clayers % stride_count_factor)
         d_features = DFeatures(0, len(strides))
         feature_list = get_feature_list(strides, False, d_features)
-        feature_list.append(feature_list[-1])
-        cat_module = DeepResidualConv(3, d_features(0), False, 2, False, 2, 1,
-                                      normalize=False)
+        if END_LAYER:
+            feature_list.append(feature_list[-1])
+        else:
+            feature_list.append(1)
+        cat_module = SpectralNorm(nn.Conv2d(3, d_features(0), 5, stride=2, padding=2))
         block_block = BlockBlock(len(strides), IMAGE_SIZE, feature_list, strides,
                                  False)
         conv = [ResModule(lambda x: x,
@@ -85,8 +88,8 @@ class Discriminator(nn.Module):
                                            block_block.out_features, 1, False, 1, 0,
                                            1))
                 for i in range(END_LAYER - 1)]
-
-        conv.append(
+        if END_LAYER:
+            conv.append(
                 DeepResidualConv(block_block.out_features, 1, False, 1, False, 2, 1))
         conv.insert(0, cat_module)
         conv.insert(1, block_block)

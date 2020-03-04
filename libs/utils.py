@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
 from .config import BETA_1, BETA_2
-from .nadam import Nadam
+from .nadam import Lamb
 
 
 def flatten(input_list):
@@ -146,5 +146,5 @@ def parameter_count(net):
 def get_model(model, learning_rate, device):
     model = model.to(device)
     model.apply(init)
-    opt = Nadam(model.parameters(), lr=learning_rate, betas=(BETA_1, BETA_2))
+    opt = Lamb(model.parameters(), lr=learning_rate, betas=(BETA_1, BETA_2))
     return model, opt
